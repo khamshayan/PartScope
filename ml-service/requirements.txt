@@ -25,5 +25,8 @@ openpyxl==3.1.5
 # config
 python-dotenv==1.0.1
 
+# backtest charts (notebook only)
+matplotlib==3.10.0
+
 # tests
 pytest==8.3.4
