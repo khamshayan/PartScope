@@ -198,10 +198,15 @@ def verify_dispersion(checks: Checks) -> None:
             checks.info("typical baseline dispersion", f"{baseline:.4f}")
             checks.info("median peak heat index", f"{peak_heat:.2f}")
             checks.info("would flag ELEVATED (1.3-2.0)", f"{warm:,}")
+            # Wider than the 18% injection rate on purpose: a part's PEAK heat
+            # over 104 weeks can clear 2.0 on noise alone, so the share that
+            # would ever flag is legitimately higher than the share that had a
+            # shortage injected. The label states the band being tested rather
+            # than a single figure the check does not actually enforce.
             checks.check(
                 0.08 <= share <= 0.30,
-                "parts that would flag VOLATILE (heat > 2.0) is ~15%",
-                f"{share:.1%} ({hot:,} of {parts:,})",
+                "parts whose PEAK heat clears 2.0 is within 8-30%",
+                f"{share:.1%} ({hot:,} of {parts:,}); ~18% had a shortage injected",
             )
 
             cur.execute(BUSY_WEEK_SQL)

@@ -1,31 +1,74 @@
 # Architecture
 
-> Expanded in Phase 7. This is the shape as of Phase 0, and the reasoning behind
-> the datastore split, which is the decision worth explaining early.
+Three processes and two datastores. The interesting decisions are where the
+line between the two services falls, and why the data is split across two
+engines rather than one.
 
 ## Data flow
 
 ```mermaid
 flowchart TD
     B["Browser<br/>React 18 + Vite + TS"]
-    E["Express API :3000<br/>validation, orchestration, persistence"]
-    F["FastAPI :8000<br/>matching / pricing / parsing / risk"]
+    E["Express API :3000<br/>validation · orchestration · persistence"]
+    F["FastAPI :8000<br/>parsing · matching · pricing · risk"]
     M[("MongoDB<br/>parts catalog")]
-    P[("PostgreSQL<br/>price history, RFQs, line items")]
+    P[("PostgreSQL<br/>price history · RFQs · line items")]
 
-    B -->|"POST /api/rfq<br/>text or file"| E
+    B -->|"POST /api/rfq<br/>pasted text or uploaded file"| E
+    E -->|"POST /parse or /parse/file"| F
     E -->|"POST /analyze"| F
     F -->|"catalog lookup,<br/>spec distance"| M
-    F -->|"quote percentiles,<br/>52wk series"| P
+    F -->|"quote percentiles,<br/>52-week series"| P
     E -->|"persist RFQ +<br/>enriched line items"| P
     E -->|"enrich with<br/>catalog detail"| M
     E -->|"enriched rows"| B
 ```
 
-The Express layer owns request validation, persistence and error shaping; the
-FastAPI layer owns everything with a model or an algorithm in it. Splitting on
-that line means the Python service stays a pure analysis service that can be
-exercised directly from `pytest` without a web tier in the way.
+## Where the line falls
+
+Express owns request validation, persistence and error shaping. FastAPI owns
+everything with a model or an algorithm in it — parsing, matching, pricing,
+risk.
+
+That split is worth more than it looks. Because no analysis logic lives behind
+the web tier, the whole pipeline is exercisable from `pytest` with nothing
+running: 164 of the project's 185 tests never open a socket. It also meant that
+when parsing outgrew its first implementation in Phase 5, there was exactly one
+place to put the replacement.
+
+The rule has one enforced consequence: **there is no second implementation of
+anything on the Node side.** An earlier JavaScript RFQ parser was deleted rather
+than kept in sync, because two answers to "what is a part number" drift, and the
+drift surfaces as a line item the API reads one way and the matcher another.
+
+## Request lifecycle
+
+A `POST /api/rfq` with pasted text:
+
+1. **Express** validates the body with `zod` and rejects anything malformed with
+   `{ error: { code, message } }`.
+2. **FastAPI `/parse`** turns the text into line items — headers, signatures and
+   quoted reply chains stripped, quantities extracted.
+3. **FastAPI `/analyze`** matches each line against an in-memory catalog index,
+   loads every matched part's price history in **one** Postgres round trip, and
+   returns bands, forecasts, heat and risk.
+4. **Express** enriches the rows with full catalog documents from Mongo — again
+   one query for the batch, not one per line — then writes the RFQ and its line
+   items in a single transaction.
+5. The enriched rows go back to the browser.
+
+Fifteen messy lines complete this in roughly 700 ms.
+
+Two caches make that possible, and both are deliberate:
+
+- **Catalog index** — 8,000 parts loaded into memory once at startup (~550 ms).
+  At this size an in-memory index beats a query per lookup by orders of
+  magnitude, and it is what makes prefix and fuzzy matching affordable.
+- **Serving forecaster** — the gradient booster takes ~70 s to fit and is
+  cached to disk, keyed by a signature of the data and feature version. Without
+  it every service start paid that cost; with it, startup is under 3 s. SARIMA
+  keeps a separate per-part order cache, because its grid search is the
+  expensive half and its answer barely moves week to week.
 
 ## Why two datastores
 
@@ -76,14 +119,29 @@ audit trail in one place.
 
 ```
 ml-service/     Python: FastAPI service, generators, models, tests
-  app/          config, service, matching/ pricing/ parsing/ risk/
+  app/          config, main.py
+    matching/   normalisation rules, match cascade, alternates
+    pricing/    repository, bands, volatility, forecasters, backtest
+    parsing/    token scoring, email parser, spreadsheet parser
+    risk/       AS6171 test-flow rules
   data/         generate_catalog.py, generate_price_history.py, test_cases.json
+  notebooks/    backtest_report.ipynb
 api/            Node/Express: routes, db access, migrations
+  src/db/migrations/   001_init.sql
 web/            React + Vite dashboard
-scripts/        seed, verify, wait-for-db, dev runner
+scripts/        seed, verify, wait-for-db, dev runner, backtest, build_samples
+sample-rfqs/    a messy email and two BOM spreadsheets
 docs/           this file, data-sources.md, backtest-results.md
 ```
 
 `scripts/` holds the cross-platform entry points; the `Makefile` and `make.ps1`
 are thin wrappers over them so the same commands work on macOS, Linux and
 Windows.
+
+## What is deliberately absent
+
+No authentication, no user accounts, no multi-tenancy, no message queue, no
+container orchestration. This is a single-user analysis tool run locally, and
+every one of those would be weight without a load. The two datastores are here
+because the data genuinely has two shapes; nothing else was added on the same
+reasoning.

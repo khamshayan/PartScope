@@ -37,7 +37,12 @@ describe('structured errors', () => {
     const boom = new Error('connection string is postgres://user:hunter2@host');
     boom.stack = 'Error: secret\n  at somewhere';
 
+    // The handler logs server-side on purpose; silence it so a passing suite
+    // does not print a scary-looking stack to stderr.
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     errorHandler(boom, {}, res, () => {});
+    expect(logged).toHaveBeenCalled();
+    logged.mockRestore();
 
     expect(res.status).toHaveBeenCalledWith(500);
     const body = JSON.stringify(res.json.mock.calls[0][0]);

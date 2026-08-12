@@ -22,35 +22,39 @@ recommendation:
 
 ---
 
-## Status
-
-Built in phases. This is what currently works:
-
-| Phase | Scope | State |
-|---|---|---|
-| 0 | Scaffold, Docker datastores, synthetic data generators | **done** |
-| 1 | Part matcher + accuracy evaluation | **done** |
-| 2 | Pricing engine, forecasters, backtest | **done** |
-| 3 | FastAPI + Express service layer | **done** |
-| 4 | React dashboard | **done** |
-| 5 | Email and spreadsheet parsing | **done** |
-| 6 | AS6171 test-flow routing | **done** |
-| 7 | Packaging and docs | not started |
-
 ## Quickstart
 
-Requires Docker, Python 3.11+ and Node 20+.
+Three commands from clone to running. **No API keys, no accounts, no manual data
+setup.** Requires Docker, Python 3.11+ and Node 20+.
 
 ```bash
-cp .env.example .env      # defaults work as-is; no API keys needed
-make setup                # venv + python deps + npm deps
-make up                   # postgres + mongo via docker compose
-make seed                 # generate the synthetic dataset
-make verify               # prove the data has the properties we claim
+git clone <this-repo> sourcescope && cd sourcescope
+make setup     # venv, python deps, npm deps, .env
+make demo      # databases up, data seeded, all three services running
 ```
 
+Then open <http://localhost:5173> and press **Load example**.
+
 On Windows, where `make` is not installed, the same targets are available as
-`./make.ps1 setup`, `./make.ps1 up`, and so on.
+`./make.ps1 setup` and `./make.ps1 demo`.
+
+<details>
+<summary>Individual targets</summary>
+
+```bash
+make up        # postgres + mongo via docker compose
+make seed      # generate the synthetic dataset (~35s)
+make verify    # prove the data has the properties this README claims
+make dev       # ml-service :8000, api :3000, web :5173
+make test      # python + node test suites
+make clean     # remove containers and volumes
+```
+
+The first service start fits and caches the serving forecaster (~70s); later
+starts take about 3 seconds.
+
+</details>
+
 
 ## The problem
 
@@ -180,24 +184,7 @@ A line that matched nothing gets **no** recommendation. You cannot route a test
 flow for a part you have not identified, and a score built from the one signal
 that happens to exist would be worse than saying so.
 
-## Running it
-
-```bash
-make up && make seed     # databases + synthetic data (~35s)
-make dev                 # ml-service :8000, api :3000, web :5173
-```
-
-Then open <http://localhost:5173> and press **Load example**.
-
-The ML service trains its serving forecaster on first start (~70s) and caches
-it; later starts take about 3 seconds.
-
-Or drive it from the shell:
-
-```bash
-curl -X POST localhost:3000/api/rfq -H 'Content-Type: application/json' \
-  -d '{"raw_text":"296-STM32F130C3Y6-ND x 500\nstm32f105kct7, 250"}'
-```
+## Getting an RFQ in
 
 ### Getting an RFQ in
 
@@ -222,7 +209,7 @@ column B ("Component"), quantities from column A ("Required")"* — because a
 parser that silently picked the wrong column looks exactly like one that picked
 right, until someone orders against it.
 
-### The dashboard
+## The dashboard
 
 One page. Paste on the left, results on the right.
 
@@ -244,12 +231,88 @@ One page. Paste on the left, results on the right.
 
 8,000 parts and ~2.8M weekly broker quotes, generated deterministically from one
 seed. About a quarter of the catalog is Obsolete or EOL with zero authorized
-stock — those are the interesting cases. Roughly 15% of parts carry an injected
+stock — those are the interesting cases. About 18% of parts carry an injected
 shortage event whose quote dispersion widens sharply during the spike, which is
 the signal the volatility flag reads.
 
 **None of it is real.** Read [docs/data-sources.md](docs/data-sources.md) before
 drawing any conclusion from a number this project prints.
+
+[`ml-service/data/adapters/nexar_adapter.py`](ml-service/data/adapters/nexar_adapter.py)
+sketches the same interface against the Nexar (Octopart) API and falls back to
+the generator when `NEXAR_API_KEY` is absent. **It is a stub whose methods
+raise** — it exists to show that the data source is behind a seam, not to
+provide a working feed. Its docstring says exactly which parts are unbuilt, the
+hardest being that Nexar returns current distributor offers rather than the
+weekly broker-quote history the forecasters train on.
+
+## What I'd do differently with real data
+
+The methodology transfers. Several of the results would not, and it is worth
+being specific about which.
+
+**The forecast comparison would tighten, and might invert.** The gradient
+booster beats the naive baseline here partly because every shortage in this
+dataset was generated from one exponential-decay process, so there is a single
+consistent pattern to learn. Real shortages differ part to part and correlate
+across whole categories — an automotive MCU allocation moves a hundred part
+numbers at once. I would expect the gap to narrow, and during a shortage with no
+precedent in the training window I would expect the booster to do worse than
+naive, not better. The first thing I would build is a per-segment monitor that
+compares each model against the baseline continuously, so that inversion is
+visible rather than assumed away.
+
+**Cross-sectional features would matter more than per-part history.** With real
+data the strongest signal for "this part is about to spike" is probably not its
+own price path at all — it is that three related parts from the same fab process
+already spiked. That means a panel model with category and process-node
+features, which is a different shape of problem from the per-part series here.
+
+**The matcher would need a real evaluation set, not 60 hand-written cases.**
+96% top-1 on cases I wrote myself is a smoke test, not a measurement — I know
+what mess I thought to include. The honest version samples real RFQ line items,
+has a human label them, and reports accuracy with a confidence interval. I would
+also expect whole categories of mess I did not imagine: OCR output from scanned
+faxes, customer-internal part numbers with no relationship to the MPN, and
+Chinese-market equivalents.
+
+**Lead time deserves to be a first-class output.** The generator carries
+`lead_time_days` and this project barely uses it. In a real shortage the
+question is rarely "what does it cost" — it is "can I get it before the line
+stops". Price is the easier thing to model, which is not the same as the more
+useful one.
+
+**The volatility flag needs calibration against outcomes.** The heat index is
+constructed to be sensible, and on synthetic data it detects the spikes that
+were injected — which is close to circular. The real test is whether a
+VOLATILE flag predicts something a buyer cares about: a failed delivery, a
+counterfeit finding, a price that keeps climbing. That needs outcome data this
+project does not have, and until it exists the thresholds (1.3 and 2.0) are
+reasonable guesses rather than tuned values.
+
+**Two things I would keep unchanged.** Rules-based test-flow routing, because
+its value is that a human can audit and dispute it — and that argument gets
+stronger with real money at stake, not weaker. And the walk-forward evaluation
+discipline, because a random split would have made every number in this README
+look better and mean nothing.
+
+## Project status
+
+Built in phases, each with tests and a commit boundary.
+
+| Phase | Scope | State |
+|---|---|---|
+| 0 | Scaffold, Docker datastores, synthetic data generators | **done** |
+| 1 | Part matcher + accuracy evaluation | **done** |
+| 2 | Pricing engine, forecasters, backtest | **done** |
+| 3 | FastAPI + Express service layer | **done** |
+| 4 | React dashboard | **done** |
+| 5 | Email and spreadsheet parsing | **done** |
+| 6 | AS6171 test-flow routing | **done** |
+| 7 | Packaging and docs | **done** |
+
+185 tests: 164 Python (`pytest`), 21 Node (`vitest`), plus a TypeScript
+typecheck on the web app. `make test` runs the suites.
 
 ## Licence
 
