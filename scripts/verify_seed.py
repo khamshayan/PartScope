@@ -101,41 +101,62 @@ def verify_price_history(checks: Checks) -> None:
         conn.close()
 
 
-# Dispersion ratio is exactly the Phase 2 formula: (P75 - P25) / P50 across the
-# brokers quoting that part that week. Comparing each part's widest week against
-# its own median week keeps the comparison within-part, so it cannot be an
-# artefact of expensive parts simply having wider absolute spreads.
+# This reproduces the Phase 2 heat index, so it checks two things at once: that
+# the shortage events are present, and that the thresholds Phase 2 will use are
+# calibrated to this data.
+#
+#   dispersion_ratio = (P75 - P25) / P50   per part-week
+#   smoothed         = mean over the trailing 8 weeks
+#   baseline         = that part's own median dispersion
+#   heat_index       = smoothed / baseline        (> 2.0 is VOLATILE)
+#
+# The 8-week smoothing is not cosmetic. A single week holds only ~3 quotes, so
+# one week's P25-P75 is extremely noisy; the maximum of 104 such weeks exceeds
+# twice the median for essentially every part, purely as an extreme-value
+# artefact. Smoothing first is what separates a real shortage from sampling
+# noise -- and is exactly why Phase 2 specifies a trailing 8-week window.
 DISPERSION_SQL = """
 WITH weekly AS (
     SELECT part_mpn,
            week_start,
-           percentile_cont(0.25) WITHIN GROUP (ORDER BY quoted_price) AS p25,
-           percentile_cont(0.50) WITHIN GROUP (ORDER BY quoted_price) AS p50,
-           percentile_cont(0.75) WITHIN GROUP (ORDER BY quoted_price) AS p75,
-           count(*) AS quotes
+           (percentile_cont(0.75) WITHIN GROUP (ORDER BY quoted_price)
+            - percentile_cont(0.25) WITHIN GROUP (ORDER BY quoted_price))
+           / NULLIF(percentile_cont(0.50) WITHIN GROUP (ORDER BY quoted_price), 0)
+             AS dispersion_ratio
     FROM parts_price_history
     GROUP BY part_mpn, week_start
     HAVING count(*) >= 3
 ),
-ratios AS (
+smoothed AS (
     SELECT part_mpn,
            week_start,
-           (p75 - p25) / NULLIF(p50, 0) AS dispersion_ratio,
-           quotes
+           avg(dispersion_ratio) OVER (
+               PARTITION BY part_mpn ORDER BY week_start
+               ROWS BETWEEN 7 PRECEDING AND CURRENT ROW
+           ) AS smoothed_ratio,
+           dispersion_ratio
     FROM weekly
 ),
-per_part AS (
+baselines AS (
     SELECT part_mpn,
-           max(dispersion_ratio)                          AS peak_ratio,
-           percentile_cont(0.5) WITHIN GROUP (ORDER BY dispersion_ratio) AS median_ratio
-    FROM ratios
+           percentile_cont(0.5) WITHIN GROUP (ORDER BY dispersion_ratio) AS baseline
+    FROM smoothed
     GROUP BY part_mpn
+),
+heat AS (
+    SELECT s.part_mpn,
+           max(s.smoothed_ratio / NULLIF(b.baseline, 0)) AS peak_heat_index,
+           b.baseline
+    FROM smoothed s
+    JOIN baselines b USING (part_mpn)
+    GROUP BY s.part_mpn, b.baseline
 )
-SELECT count(*)                                              AS parts,
-       count(*) FILTER (WHERE peak_ratio > 2.0 * median_ratio) AS spiked,
-       percentile_cont(0.5) WITHIN GROUP (ORDER BY median_ratio) AS typical_calm,
-       percentile_cont(0.5) WITHIN GROUP (ORDER BY peak_ratio)   AS typical_peak
-FROM per_part
+SELECT count(*)                                                  AS parts,
+       count(*) FILTER (WHERE peak_heat_index > 2.0)             AS volatile_parts,
+       count(*) FILTER (WHERE peak_heat_index BETWEEN 1.3 AND 2.0) AS elevated_parts,
+       percentile_cont(0.5) WITHIN GROUP (ORDER BY baseline)     AS typical_baseline,
+       percentile_cont(0.5) WITHIN GROUP (ORDER BY peak_heat_index) AS typical_peak_heat
+FROM heat
 """
 
 # The same comparison at the row level: weeks where a lot of brokers quoted
@@ -171,15 +192,16 @@ def verify_dispersion(checks: Checks) -> None:
     try:
         with conn.cursor() as cur:
             cur.execute(DISPERSION_SQL)
-            parts, spiked, calm, peak = cur.fetchone()
-            share = spiked / parts if parts else 0
+            parts, hot, warm, baseline, peak_heat = cur.fetchone()
+            share = hot / parts if parts else 0
             checks.info("parts analysed", f"{parts:,}")
-            checks.info("typical calm dispersion ratio", f"{calm:.4f}")
-            checks.info("typical peak dispersion ratio", f"{peak:.4f}")
+            checks.info("typical baseline dispersion", f"{baseline:.4f}")
+            checks.info("median peak heat index", f"{peak_heat:.2f}")
+            checks.info("would flag ELEVATED (1.3-2.0)", f"{warm:,}")
             checks.check(
-                0.10 <= share <= 0.35,
-                "parts showing a distinct dispersion spike is ~15%",
-                f"{share:.1%} ({spiked:,} of {parts:,})",
+                0.08 <= share <= 0.30,
+                "parts that would flag VOLATILE (heat > 2.0) is ~15%",
+                f"{share:.1%} ({hot:,} of {parts:,})",
             )
 
             cur.execute(BUSY_WEEK_SQL)
