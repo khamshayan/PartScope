@@ -150,7 +150,7 @@ def _volt_code(volts: float) -> str:
 # built. Numeric fields matter: Phase 1 ranks alternate parts by weighted
 # distance over exactly these numbers.
 
-def _specs_mcu(rng: random.Random) -> dict:
+def _specs_mcu(rng: random.Random, manufacturer: str) -> dict:
     flash = rng.choice([8, 16, 32, 64, 128, 256, 512, 1024])
     return {
         "core": rng.choice(["ARM Cortex-M0+", "ARM Cortex-M3", "ARM Cortex-M4F",
@@ -167,7 +167,7 @@ def _specs_mcu(rng: random.Random) -> dict:
     }
 
 
-def _specs_opamp(rng: random.Random) -> dict:
+def _specs_opamp(rng: random.Random, manufacturer: str) -> dict:
     return {
         "channels": rng.choice([1, 1, 2, 2, 4]),
         "gbw_mhz": rng.choice([0.35, 1.0, 3.0, 8.0, 10.0, 22.0, 50.0, 100.0]),
@@ -180,8 +180,13 @@ def _specs_opamp(rng: random.Random) -> dict:
     }
 
 
-def _specs_capacitor(rng: random.Random) -> dict:
-    dielectric = rng.choice(["C0G", "X7R", "X7R", "X5R", "Y5V", "NP0", "Tantalum"])
+def _specs_capacitor(rng: random.Random, manufacturer: str) -> dict:
+    # Only KEMET carries a tantalum line here; the ceramic houses do not make
+    # them, and their part numbers have no way to express one.
+    choices = ["C0G", "X7R", "X7R", "X5R", "Y5V", "NP0"]
+    if manufacturer == "KEMET":
+        choices = choices + ["Tantalum", "Tantalum"]
+    dielectric = rng.choice(choices)
     if dielectric == "Tantalum":
         capacitance = rng.choice([1_000_000, 2_200_000, 4_700_000, 10_000_000])
         voltage = rng.choice([10, 16, 25])
@@ -203,7 +208,7 @@ def _specs_capacitor(rng: random.Random) -> dict:
     }
 
 
-def _specs_resistor(rng: random.Random) -> dict:
+def _specs_resistor(rng: random.Random, manufacturer: str) -> dict:
     return {
         "resistance_ohm": round(rng.choice(E24) * (10 ** rng.randint(0, 5)) / 10, 2),
         "tolerance_pct": rng.choice([0.1, 0.5, 1.0, 5.0]),
@@ -214,7 +219,7 @@ def _specs_resistor(rng: random.Random) -> dict:
     }
 
 
-def _specs_logic(rng: random.Random) -> dict:
+def _specs_logic(rng: random.Random, manufacturer: str) -> dict:
     function = rng.choice(list(LOGIC_FUNCTION_CODE))
     # Single-gate packages exist for simple functions only; nobody ships a
     # one-channel shift register.
@@ -239,7 +244,7 @@ ZENER_1N47XX = {3.3: 4728, 4.7: 4732, 5.1: 4733, 5.6: 4734, 6.2: 4735,
                 24.0: 4749, 33.0: 4752}
 
 
-def _specs_zener(rng: random.Random) -> dict:
+def _specs_zener(rng: random.Random, manufacturer: str) -> dict:
     return {
         "zener_voltage_v": rng.choice(list(ZENER_1N47XX)),
         "power_dissipation_mw": rng.choice([200, 225, 350, 500, 1000, 1500, 5000]),
@@ -262,7 +267,7 @@ RDS_RANGE_BY_VDS = {
 }
 
 
-def _specs_fet(rng: random.Random) -> dict:
+def _specs_fet(rng: random.Random, manufacturer: str) -> dict:
     vds = rng.choice(list(RDS_RANGE_BY_VDS))
     lo, hi = RDS_RANGE_BY_VDS[vds]
     # Log-uniform across the class: die sizes are geometric, not linear.
@@ -281,7 +286,7 @@ def _specs_fet(rng: random.Random) -> dict:
     }
 
 
-def _specs_regulator(rng: random.Random) -> dict:
+def _specs_regulator(rng: random.Random, manufacturer: str) -> dict:
     topology = rng.choice(["LDO", "LDO", "Buck", "Boost", "Buck-Boost", "Linear"])
     return {
         "topology": topology,
@@ -295,7 +300,7 @@ def _specs_regulator(rng: random.Random) -> dict:
     }
 
 
-def _specs_fpga(rng: random.Random) -> dict:
+def _specs_fpga(rng: random.Random, manufacturer: str) -> dict:
     le = rng.choice([1500, 6000, 12000, 25000, 60000, 150000, 250000])
     return {
         "logic_elements": le,
@@ -309,7 +314,7 @@ def _specs_fpga(rng: random.Random) -> dict:
     }
 
 
-def _specs_sram(rng: random.Random) -> dict:
+def _specs_sram(rng: random.Random, manufacturer: str) -> dict:
     density, organization = rng.choice([
         (256, "32K x 8"), (1024, "128K x 8"), (2048, "128K x 16"),
         (4096, "256K x 16"), (16384, "1M x 16"), (64, "8K x 8"),
@@ -325,7 +330,7 @@ def _specs_sram(rng: random.Random) -> dict:
     }
 
 
-def _specs_flash(rng: random.Random) -> dict:
+def _specs_flash(rng: random.Random, manufacturer: str) -> dict:
     return {
         "density_mbit": rng.choice([4, 8, 16, 32, 64, 128, 256, 512]),
         "interface": rng.choice(["SPI", "SPI", "Quad SPI", "Parallel"]),
@@ -337,7 +342,7 @@ def _specs_flash(rng: random.Random) -> dict:
     }
 
 
-def _specs_connector(rng: random.Random) -> dict:
+def _specs_connector(rng: random.Random, manufacturer: str) -> dict:
     shell, contacts = rng.choice([
         (8, 2), (10, 3), (12, 4), (14, 6), (16, 7), (18, 10),
         (20, 13), (22, 19), (24, 26), (28, 37),
@@ -356,7 +361,7 @@ def _specs_connector(rng: random.Random) -> dict:
     }
 
 
-def _specs_oscillator(rng: random.Random) -> dict:
+def _specs_oscillator(rng: random.Random, manufacturer: str) -> dict:
     return {
         "frequency_mhz": rng.choice([4.0, 8.0, 12.0, 16.0, 20.0, 24.0, 25.0, 48.0, 100.0]),
         "frequency_tolerance_ppm": rng.choice([10, 20, 30, 50, 100]),
@@ -1057,7 +1062,7 @@ def _build_part(category: str, plan: CategoryPlan, rng: random.Random) -> dict:
 
     # Specs first, then the package the specs imply, then the part number built
     # from both. See the module docstring for why the order matters.
-    specs = plan.specs(rng)
+    specs = plan.specs(rng, manufacturer)
     package = (plan.package_for(rng, specs) if plan.package_for
                else rng.choice(plan.packages))
     mpn = plan.builders[manufacturer](rng, specs, package)

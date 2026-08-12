@@ -17,7 +17,7 @@ Built in phases. This is what currently works:
 | Phase | Scope | State |
 |---|---|---|
 | 0 | Scaffold, Docker datastores, synthetic data generators | **done** |
-| 1 | Part matcher + accuracy evaluation | not started |
+| 1 | Part matcher + accuracy evaluation | **done** |
 | 2 | Pricing engine, forecasters, backtest | not started |
 | 3 | FastAPI + Express service layer | not started |
 | 4 | React dashboard | not started |
@@ -73,6 +73,42 @@ Two datastores because the data genuinely differs in shape: `datasheet_specs`
 is a different object for an op-amp than for a circular connector, while price
 history is 2.8M uniform time-series rows that want window functions and
 percentiles. Full rationale in [docs/architecture.md](docs/architecture.md).
+
+## Matcher accuracy
+
+Measured on 60 hand-written messy inputs in
+[`ml-service/data/test_cases.json`](ml-service/data/test_cases.json) — 50 real
+parts across nine kinds of mess, plus 10 deliberately non-existent parts that
+must come back `no_match`. Reproduce with `make test`.
+
+| Metric | Result |
+|---|---|
+| Top-1 accuracy | **96.0%** (48/50) |
+| Top-3 accuracy | **100%** (50/50) |
+| False-positive rate | **0.0%** (0/10 non-existent parts matched) |
+
+| Case kind | n | Top-1 | Top-3 |
+|---|---|---|---|
+| exact | 7 | 100% | 100% |
+| packaging suffix | 8 | 100% | 100% |
+| truncation | 7 | 71% | 100% |
+| typo | 7 | 100% | 100% |
+| lowercase | 4 | 100% | 100% |
+| whitespace | 4 | 100% | 100% |
+| distributor prefix | 6 | 100% | 100% |
+| O/0 confusion | 4 | 100% | 100% |
+| I/1 confusion | 3 | 100% | 100% |
+| non-existent (correctly rejected) | 10 | 100% | — |
+
+**Both top-1 misses are truncations, and both are unresolvable.**
+`SST25VF032B-75I` is a prefix of both `…-75I/MF` and `…-75I/SN`;
+`MCP1827-0180E` is a prefix of three parts. The input does not contain the
+information needed to choose, so the matcher returns all of them and the
+correct part appears in the top 3. Making those score 100% would mean guessing,
+and a confident wrong answer is worse here than an honest list.
+
+Latency: ~13 ms per line to match, ~7 ms including alternates, against an
+8,000-part in-memory index that takes 550 ms to build once at startup.
 
 ## Data
 

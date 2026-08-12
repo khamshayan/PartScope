@@ -1,0 +1,426 @@
+{
+  "description": "Hand-written evaluation set for the part matcher. Every expected_mpn is a real part in the seeded synthetic catalog (seed 20240815). Inputs imitate how part numbers actually arrive: pasted from spreadsheets, retyped off reel labels, copied out of distributor carts, or read aloud over a phone. The ten 'nonexistent' cases must return no_match; they are what the false-positive rate is measured on.",
+  "catalog_seed": 20240815,
+  "cases": [
+    {
+      "id": 1,
+      "input": "STM32F130ZBT6",
+      "expected_mpn": "STM32F130ZBT6",
+      "kind": "exact",
+      "note": "clean input, exact key hit"
+    },
+    {
+      "id": 2,
+      "input": "MMSZ4744AT1G",
+      "expected_mpn": "MMSZ4744AT1G",
+      "kind": "exact",
+      "note": "clean input, zener"
+    },
+    {
+      "id": 3,
+      "input": "D38999/24JA103SN",
+      "expected_mpn": "D38999/24JA103SN",
+      "kind": "exact",
+      "note": "slash is part of the MIL spec number, not a separator artefact"
+    },
+    {
+      "id": 4,
+      "input": "23A1024-I/P",
+      "expected_mpn": "23A1024-I/P",
+      "kind": "exact",
+      "note": "dash and slash both significant"
+    },
+    {
+      "id": 5,
+      "input": "CSTCE12M00G52-R0",
+      "expected_mpn": "CSTCE12M00G52-R0",
+      "kind": "exact",
+      "note": "resonator; trailing -R0 must not be read as a reel suffix"
+    },
+    {
+      "id": 6,
+      "input": "JAN1N4733A",
+      "expected_mpn": "JAN1N4733A",
+      "kind": "exact",
+      "note": "military JAN prefix is part of the identity"
+    },
+    {
+      "id": 7,
+      "input": "BZX84-C10,215",
+      "expected_mpn": "BZX84-C10,215",
+      "kind": "exact",
+      "note": "Nexperia packing code after a comma - the comma is in the real part number"
+    },
+    {
+      "id": 8,
+      "input": "STM32F151F8U6-TR",
+      "expected_mpn": "STM32F151F8U6",
+      "kind": "packaging_suffix",
+      "note": "-TR tape and reel"
+    },
+    {
+      "id": 9,
+      "input": "TLC2084IDGKR-ND",
+      "expected_mpn": "TLC2084IDGKR",
+      "kind": "packaging_suffix",
+      "note": "Digi-Key -ND order suffix"
+    },
+    {
+      "id": 10,
+      "input": "AD2736BRZ-REEL",
+      "expected_mpn": "AD2736BRZ",
+      "kind": "packaging_suffix",
+      "note": "-REEL"
+    },
+    {
+      "id": 11,
+      "input": "CRCW12066K20BKEB T&R",
+      "expected_mpn": "CRCW12066K20BKEB",
+      "kind": "packaging_suffix",
+      "note": "T&R written out with a space"
+    },
+    {
+      "id": 12,
+      "input": "1N4749RLG-TR13",
+      "expected_mpn": "1N4749RLG",
+      "kind": "packaging_suffix",
+      "note": "-TR13 13-inch reel"
+    },
+    {
+      "id": 13,
+      "input": "STW4NS10L-E4",
+      "expected_mpn": "STW4NS10L",
+      "kind": "packaging_suffix",
+      "note": "-E4 lead-free packing indicator"
+    },
+    {
+      "id": 14,
+      "input": "RC0402JR-079K1L/TR",
+      "expected_mpn": "RC0402JR-079K1L",
+      "kind": "packaging_suffix",
+      "note": "/TR on a part whose own number already contains dashes"
+    },
+    {
+      "id": 15,
+      "input": "NTR5606N-1G-CT",
+      "expected_mpn": "NTR5606N-1G",
+      "kind": "packaging_suffix",
+      "note": "-CT cut tape; the -1G belongs to the part"
+    },
+    {
+      "id": 16,
+      "input": "STM32F130ZBT",
+      "expected_mpn": "STM32F130ZBT6",
+      "kind": "truncation",
+      "note": "temperature/package grade dropped"
+    },
+    {
+      "id": 17,
+      "input": "STM32F172CGH",
+      "expected_mpn": "STM32F172CGH6",
+      "kind": "truncation",
+      "note": "grade dropped"
+    },
+    {
+      "id": 18,
+      "input": "CRCW0603110RBKE",
+      "expected_mpn": "CRCW0603110RBKEC",
+      "kind": "truncation",
+      "note": "final packaging letter dropped"
+    },
+    {
+      "id": 19,
+      "input": "SST25VF032B-75I",
+      "expected_mpn": "SST25VF032B-75I/SN",
+      "kind": "truncation",
+      "note": "package code after the slash dropped"
+    },
+    {
+      "id": 20,
+      "input": "AGLN012-CS256",
+      "expected_mpn": "AGLN012-CS256I",
+      "kind": "truncation",
+      "note": "FPGA package grade letter dropped"
+    },
+    {
+      "id": 21,
+      "input": "LT1844CDD",
+      "expected_mpn": "LT1844CDD-12",
+      "kind": "truncation",
+      "note": "output voltage suffix dropped"
+    },
+    {
+      "id": 22,
+      "input": "MCP1827-0180E",
+      "expected_mpn": "MCP1827-0180E/MB",
+      "kind": "truncation",
+      "note": "package suffix dropped"
+    },
+    {
+      "id": 23,
+      "input": "STM32F130ZTB6",
+      "expected_mpn": "STM32F130ZBT6",
+      "kind": "typo",
+      "note": "adjacent characters transposed"
+    },
+    {
+      "id": 24,
+      "input": "TLC2048IDGKR",
+      "expected_mpn": "TLC2084IDGKR",
+      "kind": "typo",
+      "note": "digits transposed mid-number"
+    },
+    {
+      "id": 25,
+      "input": "MMSZ4744AT1F",
+      "expected_mpn": "MMSZ4744AT1G",
+      "kind": "typo",
+      "note": "final character wrong"
+    },
+    {
+      "id": 26,
+      "input": "BSC101N80LS6",
+      "expected_mpn": "BSC101N80LS5",
+      "kind": "typo",
+      "note": "final digit wrong"
+    },
+    {
+      "id": 27,
+      "input": "ADP1776AKCZ-1.3",
+      "expected_mpn": "ADP1776AKCZ-1.2",
+      "kind": "typo",
+      "note": "wrong voltage suffix; 1.3V is not a standard rail"
+    },
+    {
+      "id": 28,
+      "input": "GRM186R71A104MA94D",
+      "expected_mpn": "GRM186R71A104MA93D",
+      "kind": "typo",
+      "note": "one character wrong deep in a long code"
+    },
+    {
+      "id": 29,
+      "input": "MS3106E-24-26Q",
+      "expected_mpn": "MS3106E-24-26P",
+      "kind": "typo",
+      "note": "contact gender letter mistyped"
+    },
+    {
+      "id": 30,
+      "input": "stm32f105kct7",
+      "expected_mpn": "STM32F105KCT7",
+      "kind": "lowercase",
+      "note": "all lowercase"
+    },
+    {
+      "id": 31,
+      "input": "crcw0603100rbkea",
+      "expected_mpn": "CRCW0603100RBKEA",
+      "kind": "lowercase",
+      "note": "all lowercase passive"
+    },
+    {
+      "id": 32,
+      "input": "mcp645-i/sn",
+      "expected_mpn": "MCP645-I/SN",
+      "kind": "lowercase",
+      "note": "lowercase with separators"
+    },
+    {
+      "id": 33,
+      "input": "Ms3106e-24-26P",
+      "expected_mpn": "MS3106E-24-26P",
+      "kind": "lowercase",
+      "note": "mixed case as typed by hand"
+    },
+    {
+      "id": 34,
+      "input": "CRCW 0603 100K JKEA",
+      "expected_mpn": "CRCW0603100KJKEA",
+      "kind": "whitespace",
+      "note": "spaces inserted at field boundaries"
+    },
+    {
+      "id": 35,
+      "input": "STM32 F131 R3U6",
+      "expected_mpn": "STM32F131R3U6",
+      "kind": "whitespace",
+      "note": "spaced out as read aloud"
+    },
+    {
+      "id": 36,
+      "input": "   AD4060ANZ   ",
+      "expected_mpn": "AD4060ANZ",
+      "kind": "whitespace",
+      "note": "leading and trailing padding from a spreadsheet cell"
+    },
+    {
+      "id": 37,
+      "input": "D38999 / 26JC124SN",
+      "expected_mpn": "D38999/26JC124SN",
+      "kind": "whitespace",
+      "note": "spaces around a significant slash"
+    },
+    {
+      "id": 38,
+      "input": "296-STM32F130C3Y6-ND",
+      "expected_mpn": "STM32F130C3Y6",
+      "kind": "distributor_prefix",
+      "note": "Digi-Key order code wraps the part at both ends"
+    },
+    {
+      "id": 39,
+      "input": "511-STW14NF06LT4",
+      "expected_mpn": "STW14NF06LT4",
+      "kind": "distributor_prefix",
+      "note": "Mouser prefix"
+    },
+    {
+      "id": 40,
+      "input": "863-MPF005-TQ144I",
+      "expected_mpn": "MPF005-TQ144I",
+      "kind": "distributor_prefix",
+      "note": "prefix on a part that itself contains a dash"
+    },
+    {
+      "id": 41,
+      "input": "621-DDZ24S-7A",
+      "expected_mpn": "DDZ24S-7A",
+      "kind": "distributor_prefix",
+      "note": "prefix plus the -7 that belongs to the part"
+    },
+    {
+      "id": 42,
+      "input": "595-C1206C101G5RACAUTO",
+      "expected_mpn": "C1206C101G5RACAUTO",
+      "kind": "distributor_prefix",
+      "note": "prefix on a long KEMET code"
+    },
+    {
+      "id": 43,
+      "input": "71-CRCW0603100KJKEB",
+      "expected_mpn": "CRCW0603100KJKEB",
+      "kind": "distributor_prefix",
+      "note": "two-digit prefix"
+    },
+    {
+      "id": 44,
+      "input": "STM32F13OC3Y6",
+      "expected_mpn": "STM32F130C3Y6",
+      "kind": "o0_confusion",
+      "note": "letter O typed for zero"
+    },
+    {
+      "id": 45,
+      "input": "GRM186R71A1O4MA93D",
+      "expected_mpn": "GRM186R71A104MA93D",
+      "kind": "o0_confusion",
+      "note": "letter O for zero in a capacitance code"
+    },
+    {
+      "id": 46,
+      "input": "23A1O24-I/P",
+      "expected_mpn": "23A1024-I/P",
+      "kind": "o0_confusion",
+      "note": "letter O for zero in a density code"
+    },
+    {
+      "id": 47,
+      "input": "A3PO60-FG484T",
+      "expected_mpn": "A3P060-FG484T",
+      "kind": "o0_confusion",
+      "note": "letter O for zero right after a letter, the hardest position to spot"
+    },
+    {
+      "id": 48,
+      "input": "MMSZ4744ATIG",
+      "expected_mpn": "MMSZ4744AT1G",
+      "kind": "i1_confusion",
+      "note": "capital I typed for one"
+    },
+    {
+      "id": 49,
+      "input": "STM32F15IF8U6",
+      "expected_mpn": "STM32F151F8U6",
+      "kind": "i1_confusion",
+      "note": "capital I for one mid-number"
+    },
+    {
+      "id": 50,
+      "input": "DSC100IBI1-0024.0000",
+      "expected_mpn": "DSC1001BI1-0024.0000",
+      "kind": "i1_confusion",
+      "note": "one I is a typo, the other I is genuine - must not swap both"
+    },
+    {
+      "id": 51,
+      "input": "STM32Z999Q9X9",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "plausible STM32 shape, no such family"
+    },
+    {
+      "id": 52,
+      "input": "ZZ-NOT-A-REAL-PART-99",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "obviously not a part number"
+    },
+    {
+      "id": 53,
+      "input": "ACME12345XYZ",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "invented manufacturer"
+    },
+    {
+      "id": 54,
+      "input": "QQQQ0000WWWW",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "part-number shaped but meaningless"
+    },
+    {
+      "id": 55,
+      "input": "LM9999XYZ-99.9",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "real TI prefix, invented everything else - the dangerous case"
+    },
+    {
+      "id": 56,
+      "input": "BOGUSPART001",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "filler text that reached the parts column"
+    },
+    {
+      "id": 57,
+      "input": "XKCD1234ABCD",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "random alphanumeric"
+    },
+    {
+      "id": 58,
+      "input": "74ZZ999QQ",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "real 74-series prefix, invented family - should not fuzzy-match a real 74 part"
+    },
+    {
+      "id": 59,
+      "input": "CRCW9999ZZZZZZZZ",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "real Vishay prefix, impossible case size"
+    },
+    {
+      "id": 60,
+      "input": "D99999/99ZZ999ZZ",
+      "expected_mpn": null,
+      "kind": "nonexistent",
+      "note": "MIL-spec shaped, no such slash sheet"
+    }
+  ]
+}
