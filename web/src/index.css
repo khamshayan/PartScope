@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-page font-sans text-ink antialiased;
+  }
+
+  /* Columns of numbers have to line up to be scannable; standalone figures
+     do not, so this is scoped rather than global. */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}

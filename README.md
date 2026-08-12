@@ -8,6 +8,14 @@ counterfeit-test recommendations.
 > project is fabricated by a seeded generator. See
 > [docs/data-sources.md](docs/data-sources.md).
 
+![The Source Scope dashboard: a messy RFQ on the left, matched and priced line items on the right](docs/images/dashboard.png)
+
+Thirteen messy lines in, twelve matched, in about 600ms. The three parts at the
+bottom of the table are the ones worth a buyer's attention — an obsolete power
+FET and two end-of-life parts whose brokers have stopped agreeing on price:
+
+![Market heat: an obsolete part flagged Volatile at 2.06x its own baseline, two more Elevated](docs/images/market-heat.png)
+
 ---
 
 ## Status
@@ -20,7 +28,7 @@ Built in phases. This is what currently works:
 | 1 | Part matcher + accuracy evaluation | **done** |
 | 2 | Pricing engine, forecasters, backtest | **done** |
 | 3 | FastAPI + Express service layer | **done** |
-| 4 | React dashboard | not started |
+| 4 | React dashboard | **done** |
 | 5 | Email and spreadsheet parsing | not started |
 | 6 | AS6171 test-flow routing | not started |
 | 7 | Packaging and docs | not started |
@@ -144,13 +152,35 @@ make up && make seed     # databases + synthetic data (~35s)
 make dev                 # ml-service :8000, api :3000, web :5173
 ```
 
+Then open <http://localhost:5173> and press **Load example**.
+
 The ML service trains its serving forecaster on first start (~70s) and caches
 it; later starts take about 3 seconds.
+
+Or drive it from the shell:
 
 ```bash
 curl -X POST localhost:3000/api/rfq -H 'Content-Type: application/json' \
   -d '{"raw_text":"296-STM32F130C3Y6-ND x 500\nstm32f105kct7, 250"}'
 ```
+
+### The dashboard
+
+One page. Paste on the left, results on the right.
+
+- **Confidence** renders as a bar; anything under 0.7 is tagged **Review**.
+- **Market heat** is a chip — Stable / Elevated / Volatile — always carrying a
+  dot *and* the word, never colour alone, because the amber step is deliberately
+  below 3:1 against a white surface.
+- **Clicking a row** expands it: a 52-week price sparkline, the normalisation
+  rules that fired, lifecycle and stock, and cross-manufacturer alternates
+  ranked by spec distance.
+- **A line that matches nothing** turns amber and offers its three nearest
+  misses as buttons; clicking one resolves that row in place rather than
+  re-running and re-persisting the whole RFQ.
+- **Lines the parser skipped** (headers, prose, quoted replies) are listed under
+  the table. A line that silently vanished between the paste and the results is
+  the one failure mode a buyer would never catch.
 
 ## Data
 
