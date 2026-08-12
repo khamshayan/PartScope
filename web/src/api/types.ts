@@ -81,6 +81,26 @@ export interface LineItem {
   catalog?: CatalogPart | null;
 }
 
+/**
+ * How the input was read. Shown to the user, because a spreadsheet parser that
+ * silently guessed the wrong column is indistinguishable from one that guessed
+ * right until someone checks the numbers.
+ */
+export interface ParserDiagnostics {
+  parser?: 'email' | 'spreadsheet' | 'client-supplied';
+  sheet?: string | null;
+  header_row?: number;
+  part_column?: string | null;
+  part_column_header?: string | null;
+  quantity_column?: string | null;
+  quantity_column_header?: string | null;
+  sheets_considered?: Array<{ sheet: string; items: number }>;
+  quoted_lines_skipped?: number;
+  signature_stripped?: boolean;
+  filename?: string | null;
+  reason?: string;
+}
+
 export interface RfqResponse {
   rfq_id: number;
   created_at: string;
@@ -88,6 +108,7 @@ export interface RfqResponse {
   source_name: string | null;
   count: number;
   skipped_lines: string[];
+  parser?: ParserDiagnostics;
   model: string;
   elapsed_ms: number;
   items: LineItem[];

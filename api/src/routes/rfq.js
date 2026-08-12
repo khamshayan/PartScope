@@ -5,8 +5,7 @@ import { z } from 'zod';
 import { config } from '../config.js';
 import { badRequest, fromZod, notFound } from '../errors.js';
 import { findPartsByMpn } from '../db/mongo.js';
-import { analyzeItems } from '../services/mlClient.js';
-import { parseRfqText } from '../services/inputParser.js';
+import { analyzeItems, parseFile, parseText } from '../services/mlClient.js';
 import { getRfq, listRfqs, saveRfq } from '../services/rfqRepository.js';
 
 export const rfqRouter = Router();
@@ -46,63 +45,82 @@ const listSchema = z.object({
 
 const idSchema = z.coerce.number().int().positive();
 
-/** Spreadsheets are binary; Phase 5 adds real parsing in the Python service. */
-const SPREADSHEET_TYPES = /\.(xlsx|xlsm|xls)$/i;
+const SPREADSHEET_NAME = /\.(xlsx|xlsm|xltx|xltm)$/i;
 
-function decodeUpload(file) {
-  if (SPREADSHEET_TYPES.test(file.originalname)) {
-    throw badRequest(
-      'Spreadsheet parsing is not available yet (Phase 5). Paste the part numbers as text for now.',
-      { filename: file.originalname },
-    );
+/**
+ * Three ways in, one shape out.
+ *
+ * An explicit items array is taken as given. Everything else -- pasted text or
+ * an uploaded file -- goes to the Python parser, which owns the question of
+ * what a part number looks like. Doing that here in JavaScript as well is how
+ * the two ends of the pipeline start disagreeing.
+ */
+async function resolveItems(input, file) {
+  if (input.items) {
+    return { items: input.items, skipped: [], diagnostics: { parser: 'client-supplied' } };
   }
-  const text = file.buffer.toString('utf8');
-  // A binary file decoded as UTF-8 is mostly replacement characters; catching
-  // it here gives a usable message instead of a table of garbage rows.
-  const replacementRatio =
-    (text.match(/�/g)?.length ?? 0) / Math.max(text.length, 1);
-  if (replacementRatio > 0.1) {
-    throw badRequest('Uploaded file does not look like text', {
-      filename: file.originalname,
-    });
+
+  if (file) {
+    const parsed = await parseFile(file.buffer, file.originalname, MAX_ITEMS);
+    return { items: parsed.items, skipped: parsed.skipped, diagnostics: parsed.diagnostics };
   }
-  return text;
+
+  const parsed = await parseText(input.raw_text, MAX_ITEMS);
+  return { items: parsed.items, skipped: parsed.skipped, diagnostics: parsed.diagnostics };
+}
+
+/** What gets stored as raw_input when the upload was binary. */
+function rawInputFor(input, file, diagnostics) {
+  if (input.raw_text) return input.raw_text;
+  if (file && SPREADSHEET_NAME.test(file.originalname)) {
+    // A spreadsheet's bytes are not readable text, so record what was read
+    // from it instead. An empty raw_input on a saved RFQ is worse than a
+    // summary -- it makes the row look like a failed save.
+    return [
+      `[spreadsheet upload] ${file.originalname}`,
+      diagnostics?.sheet ? `sheet: ${diagnostics.sheet}` : null,
+      diagnostics?.part_column ? `part column: ${diagnostics.part_column}` : null,
+      diagnostics?.quantity_column ? `quantity column: ${diagnostics.quantity_column}` : null,
+    ].filter(Boolean).join('\n');
+  }
+  return file ? file.buffer.toString('utf8').slice(0, 200_000) : JSON.stringify(input.items);
 }
 
 rfqRouter.post('/', upload.single('file'), async (req, res, next) => {
   try {
     const body = req.body ?? {};
-    let rawText = body.raw_text;
-    let sourceType = body.source_type;
-    let sourceName = body.source_name;
+    const file = req.file;
 
-    if (req.file) {
-      rawText = decodeUpload(req.file);
-      sourceName = sourceName ?? req.file.originalname;
-      sourceType = sourceType ?? 'email';
+    let sourceType = body.source_type;
+    if (file && !sourceType) {
+      sourceType = SPREADSHEET_NAME.test(file.originalname) ? 'spreadsheet' : 'email';
     }
 
-    const parsed = createSchema.safeParse({
+    const parsedBody = createSchema.safeParse({
       ...body,
-      ...(rawText !== undefined ? { raw_text: rawText } : {}),
-      ...(sourceName !== undefined && sourceName !== null ? { source_name: sourceName } : {}),
-      ...(sourceType !== undefined ? { source_type: sourceType } : {}),
+      // A file upload satisfies the "provide something" rule on its own.
+      ...(file ? { raw_text: body.raw_text ?? undefined, items: undefined } : {}),
+      ...(sourceType ? { source_type: sourceType } : {}),
+      ...(file && !body.source_name ? { source_name: file.originalname } : {}),
     });
-    if (!parsed.success) throw fromZod(parsed.error);
 
-    const input = parsed.data;
-    const { items, skipped } = input.items
-      ? { items: input.items, skipped: [] }
-      : parseRfqText(input.raw_text, { maxItems: MAX_ITEMS });
+    if (!file && !parsedBody.success) throw fromZod(parsedBody.error);
+
+    const input = parsedBody.success
+      ? parsedBody.data
+      : { source_type: sourceType ?? 'email', source_name: file?.originalname ?? null };
+
+    const { items, skipped, diagnostics } = await resolveItems(input, file);
 
     if (!items.length) {
       throw badRequest('No part numbers could be read from that input', {
         skipped_lines: skipped.slice(0, 10),
+        parser: diagnostics,
       });
     }
 
     const analysis = await analyzeItems(
-      items.map((item) => ({
+      items.slice(0, MAX_ITEMS).map((item) => ({
         input_string: item.input_string,
         quantity: item.quantity ?? null,
       })),
@@ -120,7 +138,7 @@ rfqRouter.post('/', upload.single('file'), async (req, res, next) => {
     }));
 
     const saved = await saveRfq({
-      rawInput: input.raw_text ?? JSON.stringify(input.items),
+      rawInput: rawInputFor(input, file, diagnostics),
       sourceType: input.source_type,
       sourceName: input.source_name ?? null,
       items: enriched,
@@ -133,6 +151,7 @@ rfqRouter.post('/', upload.single('file'), async (req, res, next) => {
       source_name: input.source_name ?? null,
       count: enriched.length,
       skipped_lines: skipped,
+      parser: diagnostics,
       model: analysis.model,
       elapsed_ms: analysis.elapsed_ms,
       items: enriched,

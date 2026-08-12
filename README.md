@@ -29,7 +29,7 @@ Built in phases. This is what currently works:
 | 2 | Pricing engine, forecasters, backtest | **done** |
 | 3 | FastAPI + Express service layer | **done** |
 | 4 | React dashboard | **done** |
-| 5 | Email and spreadsheet parsing | not started |
+| 5 | Email and spreadsheet parsing | **done** |
 | 6 | AS6171 test-flow routing | not started |
 | 7 | Packaging and docs | not started |
 
@@ -163,6 +163,29 @@ Or drive it from the shell:
 curl -X POST localhost:3000/api/rfq -H 'Content-Type: application/json' \
   -d '{"raw_text":"296-STM32F130C3Y6-ND x 500\nstm32f105kct7, 250"}'
 ```
+
+### Getting an RFQ in
+
+Three ways in, one shape out. Sample files are in [sample-rfqs/](sample-rfqs/).
+
+**Paste an email body.** Mail headers, greetings, sign-offs, signature blocks
+and quoted reply chains are stripped; numbered and bulleted lists are read.
+Quantities are understood as `MPN x 500`, `500 pcs MPN`, `QTY: 500`,
+`MPN, 500, target $2.50` and tab-separated columns. A target price is never
+mistaken for a quantity.
+
+**Upload a spreadsheet.** Columns are identified by **what is in them**, not by
+what the header says — each column is scored on the fraction of its cells that
+look like part numbers, counts and money. Header text only breaks a tie between
+two columns that scored the same on content. That is what lets
+`sample-rfqs/messy-bom.xlsx` work: its table starts at row 6 under a title
+block, its part column is headed "Component", its quantity column sits to the
+*left* of the parts, and the workbook opens on a longer decoy sheet.
+
+The UI states what it decided — *"Read sheet Rev C, data from row 6, parts from
+column B ("Component"), quantities from column A ("Required")"* — because a
+parser that silently picked the wrong column looks exactly like one that picked
+right, until someone orders against it.
 
 ### The dashboard
 

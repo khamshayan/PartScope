@@ -9,6 +9,8 @@ interface Props {
   onAnalyzeFile: (file: File) => void;
   onCancel: () => void;
   loading: boolean;
+  uploadedFile: File | null;
+  onClearUpload: () => void;
 }
 
 export function RfqInput({
@@ -18,11 +20,14 @@ export function RfqInput({
   onAnalyzeFile,
   onCancel,
   loading,
+  uploadedFile,
+  onClearUpload,
 }: Props) {
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const lineCount = value.trim() ? value.trim().split(/\r?\n/).length : 0;
+  const hasInput = lineCount > 0 || uploadedFile !== null;
 
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
@@ -83,7 +88,7 @@ export function RfqInput({
         <input
           ref={fileInput}
           type="file"
-          accept=".txt,.csv,.eml,.md,text/plain"
+          accept=".xlsx,.xlsm,.txt,.csv,.eml,.md,text/plain"
           className="hidden"
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -91,15 +96,39 @@ export function RfqInput({
             event.target.value = '';
           }}
         />
-        <span className="font-medium">Drop a file</span> or click to browse
-        <div className="mt-1 text-ink-muted">.txt, .csv, .eml — spreadsheets arrive in Phase 5</div>
+        <span className="font-medium">Drop a BOM or an email</span> or click to browse
+        <div className="mt-1 text-ink-muted">
+          .xlsx, .txt, .csv, .eml — columns are inferred from cell content, so the
+          headers need not match anything
+        </div>
       </div>
+
+      {/* A spreadsheet has no readable text to show in the textarea, so the
+          upload is represented as a chip instead of dumping its bytes there. */}
+      {uploadedFile && lineCount === 0 && (
+        <div className="flex items-center justify-between gap-2 rounded-md border border-accent-ring bg-accent-soft px-3 py-2 text-xs">
+          <span className="truncate text-ink">
+            <strong className="font-medium">{uploadedFile.name}</strong>
+            <span className="ml-2 text-ink-secondary">
+              {(uploadedFile.size / 1024).toFixed(0)} KB · parsed server-side
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={onClearUpload}
+            className="shrink-0 text-ink-muted hover:text-ink"
+            aria-label="Remove uploaded file"
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={loading ? onCancel : onAnalyze}
-          disabled={!loading && lineCount === 0}
+          disabled={!loading && !hasInput}
           className={`rounded-md px-4 py-2 text-sm font-medium text-white transition-colors ${
             loading
               ? 'bg-ink-secondary hover:bg-ink'
@@ -109,8 +138,12 @@ export function RfqInput({
           {loading ? 'Cancel' : 'Analyze'}
         </button>
         <span className="text-xs text-ink-muted">
-          {lineCount > 0 ? `${lineCount} line${lineCount === 1 ? '' : 's'}` : 'nothing to analyse'}
-          {!loading && lineCount > 0 && <span className="ml-2">· Ctrl+Enter</span>}
+          {lineCount > 0
+            ? `${lineCount} line${lineCount === 1 ? '' : 's'}`
+            : uploadedFile
+              ? 'file ready'
+              : 'nothing to analyse'}
+          {!loading && hasInput && <span className="ml-2">· Ctrl+Enter</span>}
         </span>
       </div>
     </div>

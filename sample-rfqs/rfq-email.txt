@@ -1,0 +1,38 @@
+From: dana.whitfield@acme-aero.example
+To: quotes@brokerhouse.example
+Subject: RFQ 41822 - urgent, line down
+Date: Tue, 11 Aug 2026 09:14:02 +0100
+
+Hi,
+
+We have a line down and need the following as soon as you can. Target
+pricing where shown, but availability matters more than price right now.
+
+1. 296-STM32F130C3Y6-ND x 500
+2. stm32f105kct7, 250, target $3.10
+3. MMSZ4744ATIG QTY: 2000
+4. D38999/24JA103SN	12
+
+- CRCW 0603 100K JKEA  10,000 pcs
+- SST25VF032B-75I  1,000 pcs
+- AD2736BRZ-REEL x 40
+- BZX84-C10,215 x 5000
+
+We are also told these three are getting tight, please advise:
+PSMN10V4-60YL-TR x 250
+adp6208armz-2.5, 100
+MCP6001-E/SN  500 pcs
+
+And one we cannot identify from the old drawing: ZZQQ99NOTAPART x 5
+
+Let me know on lead times and whether any need full AS6171 testing.
+
+Thanks,
+Dana Whitfield
+Senior Buyer, Acme Aerospace
++44 20 7946 0958
+dana.whitfield@acme-aero.example
+
+> On Tue, 11 Aug 2026, procurement wrote:
+> Please also check whether the obsolete lines can be sourced authorised.
+> We previously bought LM317T x 9999 but that is no longer relevant.

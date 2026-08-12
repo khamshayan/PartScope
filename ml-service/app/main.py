@@ -20,11 +20,12 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from app.matching import PartMatcher, load_from_mongo
+from app.parsing import parse_spreadsheet, parse_text
 from app.pricing import repository
 from app.pricing.forecasters import GradientBoostForecaster
 from app.pricing.service import PricingService, empty_snapshot
@@ -160,6 +161,14 @@ class AnalyzeRequest(BaseModel):
     model: str | None = Field(default=None, description="naive | sarima | gbm")
 
 
+class ParseRequest(BaseModel):
+    raw_text: str = Field(..., min_length=1, max_length=500_000)
+    max_items: int = Field(default=MAX_ITEMS_PER_REQUEST, ge=1, le=1000)
+
+
+SPREADSHEET_SUFFIXES = (".xlsx", ".xlsm", ".xltx", ".xltm")
+
+
 def _require_ready() -> None:
     if not state.ready:
         raise HTTPException(
@@ -183,6 +192,56 @@ def health() -> dict:
         "default_model": DEFAULT_MODEL,
         "data": "synthetic - see docs/data-sources.md",
     }
+
+
+@app.post("/parse")
+def parse(request: ParseRequest) -> dict:
+    """Free-form text or an email body into matcher-ready line items."""
+    return parse_text(request.raw_text, max_items=request.max_items).to_dict()
+
+
+@app.post("/parse/file")
+async def parse_file(
+    file: UploadFile = File(...),
+    max_items: int = Form(default=MAX_ITEMS_PER_REQUEST),
+) -> dict:
+    """An uploaded spreadsheet or text file into matcher-ready line items.
+
+    Routing is by extension, then by content: a .xlsx really is a zip archive,
+    so a text file misnamed .xlsx fails openpyxl rather than parsing as one, and
+    falling back to the text parser gets more out of it than an error would.
+    """
+    payload = await file.read()
+    if not payload:
+        raise HTTPException(status_code=400, detail="uploaded file is empty")
+
+    name = (file.filename or "").lower()
+    looks_like_spreadsheet = name.endswith(SPREADSHEET_SUFFIXES) or payload[:2] == b"PK"
+
+    if looks_like_spreadsheet:
+        try:
+            return parse_spreadsheet(payload, file.filename or "").to_dict()
+        except Exception as exc:  # noqa: BLE001
+            if name.endswith(SPREADSHEET_SUFFIXES):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"could not read {file.filename!r} as a spreadsheet: {exc}",
+                ) from exc
+
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = payload.decode("latin-1")
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=400,
+                detail=f"{file.filename!r} is neither a spreadsheet nor readable text",
+            ) from exc
+
+    result = parse_text(text, max_items=max_items)
+    result.diagnostics["filename"] = file.filename
+    return result.to_dict()
 
 
 @app.post("/analyze")

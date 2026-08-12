@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 import { config } from '../config.js';
-import { serviceUnavailable } from '../errors.js';
+import { badRequest, serviceUnavailable } from '../errors.js';
 
 const client = axios.create({
   baseURL: config.mlService.url,
@@ -34,6 +34,13 @@ function asServiceError(error, action) {
 
   const status = error.response?.status;
   if (status === 404) return null; // caller decides what a miss means
+  if (status === 400) {
+    // The upstream rejected the input itself -- an unreadable file, an empty
+    // body. That is the caller's problem to fix, so it must not become a 500.
+    return badRequest(
+      String(error.response?.data?.detail ?? `Could not ${action}`),
+    );
+  }
   if (status && status >= 500) {
     return serviceUnavailable(`The ML service failed while trying to ${action}`, {
       ...detail,
@@ -42,6 +49,47 @@ function asServiceError(error, action) {
     });
   }
   return null;
+}
+
+/**
+ * Parsing lives in the Python tier, not here.
+ *
+ * There was a JavaScript parser in this file's neighbourhood through Phases 3
+ * and 4. It is gone deliberately: two implementations of "what is a part
+ * number" drift apart, and the drift shows up as a line item that the API reads
+ * one way and the matcher another. The Python one has the token scorer the
+ * spreadsheet column inference also depends on, so that is the one that stays.
+ */
+export async function parseText(rawText, maxItems) {
+  try {
+    const { data } = await client.post('/parse', {
+      raw_text: rawText,
+      ...(maxItems ? { max_items: maxItems } : {}),
+    });
+    return data;
+  } catch (error) {
+    const mapped = asServiceError(error, 'parse the RFQ text');
+    if (mapped) throw mapped;
+    throw error;
+  }
+}
+
+export async function parseFile(buffer, filename, maxItems) {
+  const form = new FormData();
+  form.append('file', new Blob([buffer]), filename || 'upload');
+  if (maxItems) form.append('max_items', String(maxItems));
+
+  try {
+    const { data } = await client.post('/parse/file', form, {
+      headers: { 'Content-Type': undefined },
+      maxBodyLength: Infinity,
+    });
+    return data;
+  } catch (error) {
+    const mapped = asServiceError(error, `parse ${filename}`);
+    if (mapped) throw mapped;
+    throw error;
+  }
 }
 
 export async function analyzeItems(items, model) {

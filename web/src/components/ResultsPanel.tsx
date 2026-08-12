@@ -1,4 +1,4 @@
-import type { RfqResponse } from '../api/types';
+import type { ParserDiagnostics, RfqResponse } from '../api/types';
 import { ApiFailure } from '../api/client';
 import { ResultRow } from './ResultRow';
 
@@ -55,6 +55,9 @@ export function ResultsPanel({
                 />
               ))}
             </Table>
+            {result.parser?.parser === 'spreadsheet' && (
+              <ParserNote parser={result.parser} />
+            )}
             {result.skipped_lines.length > 0 && <SkippedLines lines={result.skipped_lines} />}
           </>
         )}
@@ -178,6 +181,49 @@ function ErrorState({ error, onRetry }: { error: ApiFailure; onRetry: () => void
  * silently vanished between the paste and the table is the one failure mode a
  * buyer would never catch.
  */
+/**
+ * What the spreadsheet parser decided, in plain language.
+ *
+ * Columns are inferred from cell content rather than header text, which works
+ * well and is completely opaque when it goes wrong. Stating the choice lets a
+ * buyer notice that the "quantity" column was actually the line number before
+ * they order against it.
+ */
+function ParserNote({ parser }: { parser: ParserDiagnostics }) {
+  const sheets = parser.sheets_considered ?? [];
+  const describe = (letter?: string | null, header?: string | null) =>
+    letter ? `${letter}${header ? ` (“${header}”)` : ''}` : null;
+
+  const part = describe(parser.part_column, parser.part_column_header);
+  const quantity = describe(parser.quantity_column, parser.quantity_column_header);
+
+  return (
+    <div className="border-t border-hairline bg-accent-soft/40 px-4 py-3 text-xs text-ink-secondary">
+      Read sheet <strong className="font-medium text-ink">{parser.sheet}</strong>
+      {typeof parser.header_row === 'number' && parser.header_row > 0 && (
+        <>, data from row {parser.header_row + 1}</>
+      )}
+      {part && (
+        <> · parts from column <strong className="font-medium text-ink">{part}</strong></>
+      )}
+      {quantity ? (
+        <> · quantities from column <strong className="font-medium text-ink">{quantity}</strong></>
+      ) : (
+        <> · no quantity column found</>
+      )}
+      {sheets.length > 1 && (
+        <div className="mt-1 text-ink-muted">
+          Other sheets checked:{' '}
+          {sheets
+            .filter((sheet) => sheet.sheet !== parser.sheet)
+            .map((sheet) => `${sheet.sheet} (${sheet.items} parts)`)
+            .join(', ')}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SkippedLines({ lines }: { lines: string[] }) {
   return (
     <details className="border-t border-hairline px-4 py-3">

@@ -4,7 +4,44 @@ import { describe, expect, it, vi } from 'vitest';
 // The ML service and both datastores are stubbed. These tests are about the
 // HTTP contract -- validation, status codes, error shape -- and should pass
 // without anything running.
+// Parsing now lives in the Python tier, so it is stubbed here alongside the
+// analyser. These tests are about the HTTP contract, not about what a part
+// number looks like -- that is covered by ml-service/tests/test_parsing.py.
 vi.mock('../src/services/mlClient.js', () => ({
+  parseText: vi.fn(async (rawText) => {
+    const items = rawText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => /[A-Za-z]/.test(line) && /\d/.test(line))
+      .map((line) => {
+        const match = line.match(/^(\S+)\s*x?\s*(\d+)?/i);
+        return {
+          input_string: match[1],
+          quantity: match[2] ? Number(match[2]) : null,
+        };
+      });
+    const skipped = rawText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l && !(/[A-Za-z]/.test(l) && /\d/.test(l)));
+    return { items, skipped, diagnostics: { parser: 'email' }, count: items.length };
+  }),
+  parseFile: vi.fn(async (_buffer, filename) => {
+    if (/\.xlsx$/i.test(filename)) {
+      return {
+        items: [{ input_string: 'STM32F130C3Y6', quantity: 500 }],
+        skipped: [],
+        diagnostics: { parser: 'spreadsheet', sheet: 'BOM', part_column: 'A', quantity_column: 'C' },
+        count: 1,
+      };
+    }
+    return {
+      items: [{ input_string: 'STM32F130ZBT6', quantity: 25 }],
+      skipped: [],
+      diagnostics: { parser: 'email', filename },
+      count: 1,
+    };
+  }),
   analyzeItems: vi.fn(async (items) => ({
     items: items.map((item) => ({
       input_string: item.input_string,
@@ -101,12 +138,29 @@ describe('POST /api/rfq', () => {
     expect(res.body.error.details.skipped_lines).toContain('hello there');
   });
 
-  it('refuses a spreadsheet until Phase 5 rather than mangling it', async () => {
+  it('parses an uploaded spreadsheet and reports which columns it used', async () => {
     const res = await request(app)
       .post('/api/rfq')
-      .attach('file', Buffer.from('PKbinary'), 'bom.xlsx');
-    expect(res.status).toBe(400);
-    expect(res.body.error.message).toMatch(/spreadsheet/i);
+      .attach('file', Buffer.from('PKfake-xlsx'), 'bom.xlsx');
+
+    expect(res.status).toBe(201);
+    expect(res.body.source_type).toBe('spreadsheet');
+    expect(res.body.parser).toMatchObject({ sheet: 'BOM', part_column: 'A' });
+    expect(res.body.items).toHaveLength(1);
+  });
+
+  it('stores a readable summary rather than binary for a spreadsheet', async () => {
+    const { saveRfq } = await import('../src/services/rfqRepository.js');
+    saveRfq.mockClear();
+
+    await request(app)
+      .post('/api/rfq')
+      .attach('file', Buffer.from('PKfake-xlsx'), 'bom.xlsx');
+
+    const { rawInput } = saveRfq.mock.calls.at(-1)[0];
+    expect(rawInput).toContain('bom.xlsx');
+    expect(rawInput).toContain('sheet: BOM');
+    expect(rawInput).not.toContain('PK');
   });
 
   it('reads an uploaded text file', async () => {
@@ -115,6 +169,7 @@ describe('POST /api/rfq', () => {
       .attach('file', Buffer.from('STM32F130ZBT6 x 25\n'), 'rfq.txt');
     expect(res.status).toBe(201);
     expect(res.body.source_name).toBe('rfq.txt');
+    expect(res.body.source_type).toBe('email');
   });
 });
 

@@ -11,6 +11,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<ApiFailure | null>(null);
   const [resolvingIndex, setResolvingIndex] = useState<number | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
 
   // Lets a slow analyse be cancelled, and stops an abandoned request from
   // landing on top of a newer one.
@@ -41,17 +42,29 @@ export default function App() {
     }
   }, []);
 
+  // A spreadsheet's bytes are a zip archive. Mirroring them into the textarea
+  // filled it with binary garbage, so only text formats get mirrored -- and a
+  // spreadsheet is instead remembered as a file, shown as a chip.
+  const TEXT_LIKE = /\.(txt|csv|eml|md|log)$/i;
+
   const handleAnalyze = useCallback(() => {
-    if (!text.trim()) return;
-    void run((signal) => analyzeText(text, signal));
-  }, [run, text]);
+    // Edited text wins over the uploaded file; an untouched upload re-sends the
+    // file, because its bytes are the only complete record of what it holds.
+    if (text.trim()) {
+      void run((signal) => analyzeText(text, signal));
+      return;
+    }
+    if (uploadedFile) {
+      void run((signal) => analyzeFile(uploadedFile, signal));
+    }
+  }, [run, text, uploadedFile]);
 
   const handleFile = useCallback(
     (file: File) => {
+      setUploadedFile(file);
       void run(async (signal) => {
         const response = await analyzeFile(file, signal);
-        // Show what was actually analysed, so the textarea and the table agree.
-        setText(await file.text().catch(() => ''));
+        setText(TEXT_LIKE.test(file.name) ? await file.text().catch(() => '') : '');
         return response;
       });
     },
@@ -143,11 +156,16 @@ export default function App() {
           <div className="rounded-lg border border-hairline bg-surface p-4">
             <RfqInput
               value={text}
-              onChange={setText}
+              onChange={(next) => {
+                setText(next);
+                if (next.trim()) setUploadedFile(null);
+              }}
               onAnalyze={handleAnalyze}
               onAnalyzeFile={handleFile}
               onCancel={handleCancel}
               loading={loading}
+              uploadedFile={uploadedFile}
+              onClearUpload={() => setUploadedFile(null)}
             />
           </div>
 
