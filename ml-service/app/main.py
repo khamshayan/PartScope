@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from app.matching import PartMatcher, load_from_mongo
 from app.parsing import parse_spreadsheet, parse_text
+from app.risk import assess_row
 from app.pricing import repository
 from app.pricing.forecasters import GradientBoostForecaster
 from app.pricing.service import PricingService, empty_snapshot
@@ -274,6 +275,17 @@ def analyze(request: AnalyzeRequest) -> dict:
             snapshot = empty_snapshot("", reason="no part matched")
         row.update(snapshot.to_dict())
         row["matched_mpn"] = mpn  # snapshot would otherwise blank it for no_match
+
+        # Risk depends on both the match and the market, so it runs last.
+        risk = assess_row(row)
+        row.update(risk.to_dict() if risk else {
+            "risk_score": None,
+            "test_recommendation": None,
+            "test_band": None,
+            "test_methods": [],
+            "est_turnaround_hours": None,
+            "risk_reasons": [],
+        })
         results.append(row)
 
     return {

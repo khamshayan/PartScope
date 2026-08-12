@@ -10,11 +10,15 @@ counterfeit-test recommendations.
 
 ![The Source Scope dashboard: a messy RFQ on the left, matched and priced line items on the right](docs/images/dashboard.png)
 
-Thirteen messy lines in, twelve matched, in about 600ms. The three parts at the
-bottom of the table are the ones worth a buyer's attention — an obsolete power
-FET and two end-of-life parts whose brokers have stopped agreeing on price:
+Fifteen messy lines in, fourteen matched, in about 700ms. The rows worth a
+buyer's attention are the ones flagged at the bottom — obsolete and end-of-life
+parts whose brokers have stopped agreeing on price, five of which route to a
+full AS6171 test flow.
 
-![Market heat: an obsolete part flagged Volatile at 2.06x its own baseline, two more Elevated](docs/images/market-heat.png)
+Clicking a row shows the reasoning, including the arithmetic behind the test
+recommendation:
+
+![Test-flow breakdown: EOL +30, no authorized stock +20, elevated market +8, defense grade +15, introduced 34 years ago +10, total 83, Full AS6171, 36h of a 48h target](docs/images/test-flow.png)
 
 ---
 
@@ -30,7 +34,7 @@ Built in phases. This is what currently works:
 | 3 | FastAPI + Express service layer | **done** |
 | 4 | React dashboard | **done** |
 | 5 | Email and spreadsheet parsing | **done** |
-| 6 | AS6171 test-flow routing | not started |
+| 6 | AS6171 test-flow routing | **done** |
 | 7 | Packaging and docs | not started |
 
 ## Quickstart
@@ -144,6 +148,37 @@ MAPE; lower is better. Three results worth stating plainly:
 - **A seasonal term was selected for 0 of 500 parts.** Two years of weekly data
   is not enough to identify an annual cycle whose amplitude is smaller than the
   noise sitting on it, and AIC correctly declined to pay for one.
+
+## Test-flow routing
+
+How much counterfeit testing a part warrants — rules, not a model, and
+deliberately so. A buyer is being asked to spend real money and up to a day and
+a half of lab time on this number, and their supplier will argue about it.
+*"The gradient booster said 0.83"* does not survive that conversation.
+
+| Signal | Points |
+|---|---:|
+| Lifecycle Obsolete or EOL | +30 |
+| Zero authorized stock | +20 |
+| Market VOLATILE (ELEVATED: +8) | +15 |
+| Defense / aerospace grade | +15 |
+| Introduced more than 15 years ago | +10 |
+| Match confidence below 0.8 | +10 |
+
+**0–25 Standard** (4 h) → external visual inspection, marking permanency.
+**26–55 Enhanced** (12 h) → adds XRF, dimensional analysis, solderability.
+**56–100 Full AS6171** (36 h) → adds X-ray, decapsulation, electrical parameter
+testing.
+
+Every recommendation carries the itemised reasons that produced it, and the
+estimate is shown against a 48-hour target with a warning as it closes in — a
+full flow uses 75% of the target, leaving little room for a re-test. AS6171
+defines the test methods; the thresholds are a judgement call modelled on how
+distributors triage.
+
+A line that matched nothing gets **no** recommendation. You cannot route a test
+flow for a part you have not identified, and a score built from the one signal
+that happens to exist would be worse than saying so.
 
 ## Running it
 

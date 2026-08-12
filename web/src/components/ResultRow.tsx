@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { LineItem, NearMiss } from '../api/types';
 import { ConfidenceBar, ForecastCell, HeatChip, LifecyclePill, PriceBand } from './Indicators';
 import { Sparkline } from './Sparkline';
+import { TestFlow, TestFlowChip } from './TestFlow';
 
 const METHOD_LABELS: Record<string, string> = {
   exact: 'Exact match',
@@ -73,6 +74,10 @@ export function ResultRow({ item, index, onAcceptSuggestion, resolving }: Props)
           <HeatChip flag={item.volatility_flag} heatIndex={item.heat_index} />
         </td>
 
+        <td className="px-3 py-2.5">
+          <TestFlowChip item={item} />
+        </td>
+
         <td className="px-3 py-2.5 text-right">
           <span className="text-xs font-medium text-accent">
             {expanded ? 'Hide' : 'Details'}
@@ -82,7 +87,7 @@ export function ResultRow({ item, index, onAcceptSuggestion, resolving }: Props)
 
       {noMatch && item.near_misses.length > 0 && (
         <tr className="bg-status-warnSoft/50">
-          <td colSpan={7} className="px-3 pb-3 pt-0">
+          <td colSpan={8} className="px-3 pb-3 pt-0">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="text-status-warnInk">Did you mean</span>
               {item.near_misses.map((miss: NearMiss) => (
@@ -105,8 +110,8 @@ export function ResultRow({ item, index, onAcceptSuggestion, resolving }: Props)
 
       {expanded && (
         <tr className="border-t border-hairline bg-page">
-          <td colSpan={7} className="px-3 py-4">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <td colSpan={8} className="px-3 py-4">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
               <div>
                 {item.sparkline.length > 1 ? (
                   <Sparkline values={item.sparkline} />
@@ -154,7 +159,9 @@ export function ResultRow({ item, index, onAcceptSuggestion, resolving }: Props)
                 )}
               </div>
 
-              <div>
+              <div className="space-y-5">
+                <TestFlow item={item} />
+
                 <h4 className="mb-2 text-xs font-medium text-ink-secondary">
                   Cross-manufacturer alternates
                 </h4>

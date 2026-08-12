@@ -9,6 +9,7 @@ const COLUMNS = [
   'Price Band',
   'Forecast',
   'Market Heat',
+  'Test Flow',
   '',
 ];
 
@@ -73,6 +74,9 @@ function Header({ result, loading }: { result: RfqResponse | null; loading: bool
   const hot =
     result?.items.filter((item) => item.volatility_flag && item.volatility_flag !== 'STABLE')
       .length ?? 0;
+  // The number a buyer plans lab capacity around, so it belongs in the summary
+  // rather than only inside expanded rows.
+  const fullTest = result?.items.filter((item) => item.test_band === 'full').length ?? 0;
 
   return (
     <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-hairline px-4 py-3">
@@ -87,6 +91,9 @@ function Header({ result, loading }: { result: RfqResponse | null; loading: bool
             <span className="text-status-warnInk">{review} need review</span>
           )}
           {hot > 0 && <span className="text-status-badInk">{hot} above baseline heat</span>}
+          {fullTest > 0 && (
+            <span className="text-status-badInk">{fullTest} need full AS6171</span>
+          )}
           <span className="text-ink-muted">
             {result.model} · {Math.round(result.elapsed_ms)} ms
           </span>
@@ -127,11 +134,11 @@ function SkeletonRows() {
     <>
       {Array.from({ length: 6 }).map((_, row) => (
         <tr key={row} className="border-t border-hairline">
-          {Array.from({ length: 7 }).map((__, cell) => (
+          {Array.from({ length: 8 }).map((__, cell) => (
             <td key={cell} className="px-3 py-3">
               <div
                 className="h-3 rounded bg-hairline/70"
-                style={{ width: `${[70, 80, 55, 60, 50, 65, 30][cell]}%` }}
+                style={{ width: `${[70, 80, 55, 60, 50, 65, 60, 30][cell]}%` }}
               />
             </td>
           ))}
@@ -176,11 +183,6 @@ function ErrorState({ error, onRetry }: { error: ApiFailure; onRetry: () => void
   );
 }
 
-/**
- * Lines the parser could not read are surfaced rather than dropped. A line that
- * silently vanished between the paste and the table is the one failure mode a
- * buyer would never catch.
- */
 /**
  * What the spreadsheet parser decided, in plain language.
  *

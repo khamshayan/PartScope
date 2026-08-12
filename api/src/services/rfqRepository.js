@@ -19,12 +19,14 @@ const INSERT_LINE = `
     rfq_id, line_no, input_string, quantity,
     matched_mpn, manufacturer, confidence, match_method, alternates, near_misses,
     price_p25, price_p50, price_p75, forecast_price, forecast_model,
-    heat_index, volatility_flag
+    heat_index, volatility_flag,
+    risk_score, test_recommendation, risk_reasons, est_turnaround_hours
   ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7, $8, $9::jsonb, $10::jsonb,
     $11, $12, $13, $14, $15,
-    $16, $17
+    $16, $17,
+    $18, $19, $20::jsonb, $21
   )
   RETURNING id
 `;
@@ -67,6 +69,13 @@ export async function saveRfq({ rawInput, sourceType, sourceName, items }) {
         item.forecast_model ?? null,
         numberOrNull(item.heat_index),
         item.volatility_flag ?? null,
+        numberOrNull(item.risk_score),
+        item.test_recommendation ?? null,
+        // The itemised breakdown is stored, not just the score. A saved RFQ
+        // that says "80 / Full AS6171" with no reasons cannot be defended to
+        // the supplier who is about to be told their part needs decapping.
+        JSON.stringify(item.risk_reasons ?? []),
+        numberOrNull(item.est_turnaround_hours),
       ]);
     }
 

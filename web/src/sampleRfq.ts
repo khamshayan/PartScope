@@ -6,10 +6,14 @@
  * a truncation, a part that does not exist, an email signature and a quoted
  * reply chain. Every one of these exercises a different branch of the matcher.
  *
- * The last three lines are chosen because their market is genuinely disturbed
- * right now -- an obsolete power FET mid-shortage, an obsolete regulator and an
- * EOL op-amp. An example RFQ where every row comes back green would demo the
- * matching and hide the feature the product is actually built around.
+ * The last five lines are chosen to make the product's actual point visible.
+ * Three have a genuinely disturbed market right now -- an obsolete power FET
+ * mid-shortage, an obsolete regulator and an EOL op-amp -- and two are
+ * end-of-life defense-grade parts with no authorized stock, which is the
+ * combination that routes to a full AS6171 test flow.
+ *
+ * An example RFQ where every row came back green and Standard would demo the
+ * matcher and hide both features the product is built around.
  */
 export const SAMPLE_RFQ = `From: buyer@acme-aero.example
 Subject: RFQ 41822 — urgent, line down
@@ -33,6 +37,10 @@ Also these three, we are told they are getting tight:
 PSMN10V4-60YL-TR x 250
 adp6208armz-2.5, 100
 MCP6001-E/SN  500 pcs
+
+For the Kestrel build standard, both flight-qualified:
+m39014/11-1123v qty 40
+M2GL250T-FG676 x 6
 
 Let me know on lead times.
 

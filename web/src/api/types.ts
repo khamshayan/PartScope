@@ -78,7 +78,27 @@ export interface LineItem {
   volatility_flag: VolatilityFlag | null;
   sparkline: number[];
 
+  // phase 6: test-flow routing. Null on a line that matched nothing -- you
+  // cannot route a test flow for a part you have not identified.
+  risk_score: number | null;
+  test_recommendation: string | null;
+  test_band: 'standard' | 'enhanced' | 'full' | null;
+  test_methods: string[];
+  est_turnaround_hours: number | null;
+  target_turnaround_hours?: number;
+  approaching_target?: boolean;
+  exceeds_target?: boolean;
+  risk_reasons: RiskReason[];
+
   catalog?: CatalogPart | null;
+}
+
+/** One rule that fired, with the points it contributed to the risk score. */
+export interface RiskReason {
+  code: string;
+  label: string;
+  points: number;
+  detail: string;
 }
 
 /**
