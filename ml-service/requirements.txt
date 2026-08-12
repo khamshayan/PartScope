@@ -1,0 +1,29 @@
+# Source Scope — ML / data service
+
+# service
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+python-multipart==0.0.20
+
+# data + modelling
+pandas==2.2.3
+numpy==2.2.1
+statsmodels==0.14.4
+scikit-learn==1.6.0
+
+# matching
+rapidfuzz==3.11.0
+
+# datastores
+pymongo==4.10.1
+psycopg2-binary==2.9.10
+
+# spreadsheet parsing
+openpyxl==3.1.5
+
+# config
+python-dotenv==1.0.1
+
+# tests
+pytest==8.3.4

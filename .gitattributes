@@ -1,0 +1,14 @@
+# Normalise to LF in the repository.
+* text=auto eol=lf
+
+# These break outright with CRLF endings on Linux, so pin them.
+Makefile text eol=lf
+*.sh text eol=lf
+
+# PowerShell is happier with CRLF on Windows.
+*.ps1 text eol=crlf
+
+# Never touch binaries.
+*.png binary
+*.jpg binary
+*.xlsx binary

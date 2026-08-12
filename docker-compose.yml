@@ -1,0 +1,55 @@
+# Source Scope — datastores only.
+#
+# The application services (FastAPI, Express, Vite) run on the host so that
+# edit/reload cycles stay fast. Only the two databases are containerised, which
+# is the whole of what a reviewer needs to install.
+#
+# Ports are deliberately non-standard (5433 / 27018) so a clone-and-run never
+# collides with a Postgres or Mongo the reviewer already has on the default port.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sourcescope-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sourcescope}
+      POSTGRES_USER: ${POSTGRES_USER:-sourcescope}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sourcescope}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - sourcescope-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sourcescope} -d ${POSTGRES_DB:-sourcescope}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    # The seed writes ~2.6M rows in one COPY stream; the defaults are tuned for
+    # small transactional writes and make that noticeably slower.
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - max_wal_size=4GB
+      - -c
+      - synchronous_commit=off
+
+  mongo:
+    image: mongo:7
+    container_name: sourcescope-mongo
+    restart: unless-stopped
+    ports:
+      - "${MONGO_PORT:-27018}:27017"
+    volumes:
+      - sourcescope-mongodata:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  sourcescope-pgdata:
+  sourcescope-mongodata:
