@@ -18,8 +18,8 @@ Built in phases. This is what currently works:
 |---|---|---|
 | 0 | Scaffold, Docker datastores, synthetic data generators | **done** |
 | 1 | Part matcher + accuracy evaluation | **done** |
-| 2 | Pricing engine, forecasters, backtest | not started |
-| 3 | FastAPI + Express service layer | not started |
+| 2 | Pricing engine, forecasters, backtest | **done** |
+| 3 | FastAPI + Express service layer | **done** |
 | 4 | React dashboard | not started |
 | 5 | Email and spreadsheet parsing | not started |
 | 6 | AS6171 test-flow routing | not started |
@@ -109,6 +109,48 @@ and a confident wrong answer is worse here than an honest list.
 
 Latency: ~13 ms per line to match, ~7 ms including alternates, against an
 8,000-part in-memory index that takes 550 ms to build once at startup.
+
+## Forecast accuracy
+
+Rolling-origin walk-forward backtest: 500 parts, 25 origins, 37,500 predictions.
+Train on weeks `0..t`, predict `t+1`, advance. Full commentary in
+[docs/backtest-results.md](docs/backtest-results.md).
+
+| Segment | `naive` | `sarima` | `gbm` |
+|---|---:|---:|---:|
+| All parts | 6.5% | 6.8% | **5.3%** |
+| Active / NRND | 6.3% | 5.8% | **5.0%** |
+| Obsolete / EOL | 6.7% | 7.8% | **5.5%** |
+| **During a shortage spike** | 13.5% | 23.8% | **10.3%** |
+| Normal weeks | 6.2% | 6.1% | **5.0%** |
+
+MAPE; lower is better. Three results worth stating plainly:
+
+- **The naive baseline is hard to beat.** A random walk wins 30% of part-weeks
+  outright. On a stable part next week's price really is this week's price plus
+  noise, and there is nothing there to model.
+- **SARIMA has the best median error (4.7%) and the worst mean (6.8%).** It is
+  better than naive most weeks and occasionally catastrophic — it reads a
+  shortage spike as a trend and extrapolates while the price is already
+  decaying. That is why it is not the default.
+- **A seasonal term was selected for 0 of 500 parts.** Two years of weekly data
+  is not enough to identify an annual cycle whose amplitude is smaller than the
+  noise sitting on it, and AIC correctly declined to pay for one.
+
+## Running it
+
+```bash
+make up && make seed     # databases + synthetic data (~35s)
+make dev                 # ml-service :8000, api :3000, web :5173
+```
+
+The ML service trains its serving forecaster on first start (~70s) and caches
+it; later starts take about 3 seconds.
+
+```bash
+curl -X POST localhost:3000/api/rfq -H 'Content-Type: application/json' \
+  -d '{"raw_text":"296-STM32F130C3Y6-ND x 500\nstm32f105kct7, 250"}'
+```
 
 ## Data
 

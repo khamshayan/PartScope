@@ -236,14 +236,20 @@ class TestPricingServiceIntegration:
         assert snapshot.forecast.predicted_price > 0
         assert len(snapshot.heat.sparkline) == 52
 
-    def test_unknown_part_returns_no_data_not_zero_prices(self, catalog_index):
-        """A price of 0.00 in a quote sheet is a number someone might act on."""
+    def test_unknown_part_serialises_absence_as_null_not_zero(self):
+        """A price of 0.00 in a quote sheet is a number someone might act on.
+
+        Worse, a green STABLE chip on a part we could not identify is a
+        confident claim that happens to be false.
+        """
         from app.pricing.service import empty_snapshot
 
-        snapshot = empty_snapshot("NOT-A-REAL-PART")
-        assert snapshot.quote_count == 0
-        assert snapshot.forecast.model == "none"
-        assert snapshot.weeks_of_history == 0
+        payload = empty_snapshot("NOT-A-REAL-PART").to_dict()
+        for field in ("price_p25", "price_p50", "price_p75", "forecast_price",
+                      "heat_index", "volatility_flag", "forecast_model"):
+            assert payload[field] is None, f"{field} should be null, got {payload[field]!r}"
+        assert payload["quote_count"] == 0
+        assert payload["sparkline"] == []
 
     def test_warm_forecast_meets_the_latency_budget(self, catalog_index):
         import time

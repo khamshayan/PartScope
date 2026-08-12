@@ -31,8 +31,32 @@ class PricingSnapshot:
     forecast: ForecastResult
     heat: volatility.VolatilityAssessment
     weeks_of_history: int
+    # True when there is no price history behind this row at all.
+    no_data: bool = False
 
     def to_dict(self) -> dict:
+        if self.no_data:
+            # Absence must serialise as absence. A price of 0.0000 and a green
+            # STABLE chip on a part we could not identify is not "no data" --
+            # it is a confident claim that happens to be false, and it is the
+            # kind of cell a buyer would act on.
+            return {
+                "matched_mpn": self.mpn or None,
+                "price_p25": None,
+                "price_p50": None,
+                "price_p75": None,
+                "quote_count": 0,
+                "weeks_of_history": 0,
+                "forecast_model": None,
+                "forecast_price": None,
+                "forecast_detail": self.forecast.detail,
+                "heat_index": None,
+                "volatility_flag": None,
+                "dispersion_ratio": None,
+                "baseline_dispersion": None,
+                "sparkline": [],
+            }
+
         payload = {
             "matched_mpn": self.mpn,
             "price_p25": round(self.price_p25, 4),
@@ -46,22 +70,18 @@ class PricingSnapshot:
         return payload
 
 
-def empty_snapshot(mpn: str) -> PricingSnapshot:
-    """What to return for a part with no price history.
-
-    A no-match line, or a part nobody has quoted, is a legitimate result. It
-    must render as "no data", never as a price of zero -- a zero in a price
-    column is a number someone might act on.
-    """
+def empty_snapshot(mpn: str, reason: str = "no price history") -> PricingSnapshot:
+    """What to return for a line with no price history behind it."""
     return PricingSnapshot(
         mpn=mpn,
         price_p25=0.0,
         price_p50=0.0,
         price_p75=0.0,
         quote_count=0,
-        forecast=ForecastResult("none", 0.0, {"reason": "no price history"}),
+        forecast=ForecastResult("none", 0.0, {"reason": reason}),
         heat=volatility.VolatilityAssessment(1.0, volatility.STABLE, 0.0, 0.0, 0, []),
         weeks_of_history=0,
+        no_data=True,
     )
 
 
