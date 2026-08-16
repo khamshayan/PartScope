@@ -321,4 +321,6 @@ manufacturer or distributor named in the generated data.
 
 ## Development notes
 
-Built with AI assistance. 
+Built with AI assistance. The architecture, data model,
+and technology choices are mine, and I can explain the reasoning behind
+any part of this codebase.
