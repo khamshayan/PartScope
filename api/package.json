@@ -1,9 +1,9 @@
 {
-  "name": "sourcescope-api",
+  "name": "partscope-api",
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "description": "Source Scope API: validation, orchestration and persistence over the ML service",
+  "description": "PartScope API: validation, orchestration and persistence over the ML service",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",

@@ -1,4 +1,4 @@
-# Source Scope
+# PartScope
 
 RFQ triage for the electronic-component secondary market: paste a messy request
 for quote, get back a clean sheet of matched parts, price bands, forecasts and
@@ -8,7 +8,7 @@ counterfeit-test recommendations.
 > project is fabricated by a seeded generator. See
 > [docs/data-sources.md](docs/data-sources.md).
 
-![The Source Scope dashboard: a messy RFQ on the left, matched and priced line items on the right](docs/images/dashboard.png)
+![The PartScope dashboard: a messy RFQ on the left, matched and priced line items on the right](docs/images/dashboard.png)
 
 Fifteen messy lines in, fourteen matched, in about 700ms. The rows worth a
 buyer's attention are the ones flagged at the bottom — obsolete and end-of-life
@@ -28,7 +28,7 @@ Three commands from clone to running. **No API keys, no accounts, no manual data
 setup.** Requires Docker, Python 3.11+ and Node 20+.
 
 ```bash
-git clone <this-repo> sourcescope && cd sourcescope
+git clone <this-repo> partscope && cd partscope
 make setup     # venv, python deps, npm deps, .env
 make demo      # databases up, data seeded, all three services running
 ```
@@ -70,7 +70,7 @@ stockholders. Three things make that market painful:
   standards like AS6171, but a full test flow is expensive — so deciding how
   much testing a given part warrants is a judgement call.
 
-Source Scope automates the first pass over all three.
+PartScope automates the first pass over all three.
 
 ## Architecture
 

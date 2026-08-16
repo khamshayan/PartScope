@@ -21,14 +21,14 @@ export const config = {
   postgres: {
     host: process.env.POSTGRES_HOST ?? 'localhost',
     port: int(process.env.POSTGRES_PORT, 5433),
-    database: process.env.POSTGRES_DB ?? 'sourcescope',
-    user: process.env.POSTGRES_USER ?? 'sourcescope',
-    password: process.env.POSTGRES_PASSWORD ?? 'sourcescope',
+    database: process.env.POSTGRES_DB ?? 'partscope',
+    user: process.env.POSTGRES_USER ?? 'partscope',
+    password: process.env.POSTGRES_PASSWORD ?? 'partscope',
   },
 
   mongo: {
     uri: process.env.MONGO_URI ?? 'mongodb://localhost:27018',
-    database: process.env.MONGO_DB ?? 'sourcescope',
+    database: process.env.MONGO_DB ?? 'partscope',
   },
 
   mlService: {

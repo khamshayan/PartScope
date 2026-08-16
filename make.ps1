@@ -33,7 +33,7 @@ function Invoke-Step {
 switch ($Target) {
     'help' {
         Write-Host ""
-        Write-Host "  Source Scope targets" -ForegroundColor Cyan
+        Write-Host "  PartScope targets" -ForegroundColor Cyan
         Write-Host ""
         Write-Host "  setup    Install Python, API and web dependencies"
         Write-Host "  up       Start Postgres + Mongo"

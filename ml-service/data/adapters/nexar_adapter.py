@@ -30,7 +30,7 @@ from typing import Iterator, Protocol
 
 from app.config import get_settings
 
-log = logging.getLogger("sourcescope.nexar")
+log = logging.getLogger("partscope.nexar")
 
 NEXAR_GRAPHQL_URL = "https://api.nexar.com/graphql"
 

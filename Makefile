@@ -1,4 +1,4 @@
-# Source Scope
+# PartScope
 #
 # The targets here are thin. All real work lives in cross-platform Python and
 # npm entry points, because `make` does not exist on a stock Windows box and

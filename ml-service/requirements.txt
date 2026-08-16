@@ -1,4 +1,4 @@
-# Source Scope — ML / data service
+# PartScope — ML / data service
 
 # service
 fastapi==0.115.6

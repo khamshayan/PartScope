@@ -41,7 +41,7 @@ async function toFailure(response: Response): Promise<ApiFailure> {
 
 function networkFailure(error: unknown): ApiFailure {
   return new ApiFailure(
-    'Could not reach the Source Scope API.',
+    'Could not reach the PartScope API.',
     'NETWORK',
     0,
     error instanceof Error && error.message

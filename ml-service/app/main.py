@@ -32,7 +32,7 @@ from app.pricing.forecasters import GradientBoostForecaster
 from app.pricing.service import PricingService, empty_snapshot
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-log = logging.getLogger("sourcescope")
+log = logging.getLogger("partscope")
 
 # Parts used to train the serving gradient booster. It is a global model, so it
 # needs breadth across categories and lifecycles rather than the whole catalog.
@@ -132,7 +132,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Source Scope ML service",
+    title="PartScope ML service",
     description="Part matching, price bands, forecasts and market heat. "
                 "All data is synthetic - see docs/data-sources.md.",
     version="0.3.0",

@@ -1,4 +1,4 @@
--- Source Scope — initial schema
+-- PartScope — initial schema
 --
 -- Three tables, each earning its place in the relational store:
 --   parts_price_history  the time series the forecaster trains on

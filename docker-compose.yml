@@ -1,4 +1,4 @@
-# Source Scope — datastores only.
+# PartScope — datastores only.
 #
 # The application services (FastAPI, Express, Vite) run on the host so that
 # edit/reload cycles stay fast. Only the two databases are containerised, which
@@ -10,18 +10,18 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: sourcescope-postgres
+    container_name: partscope-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-sourcescope}
-      POSTGRES_USER: ${POSTGRES_USER:-sourcescope}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sourcescope}
+      POSTGRES_DB: ${POSTGRES_DB:-partscope}
+      POSTGRES_USER: ${POSTGRES_USER:-partscope}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-partscope}
     ports:
       - "${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - sourcescope-pgdata:/var/lib/postgresql/data
+      - partscope-pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sourcescope} -d ${POSTGRES_DB:-sourcescope}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-partscope} -d ${POSTGRES_DB:-partscope}"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -38,12 +38,12 @@ services:
 
   mongo:
     image: mongo:7
-    container_name: sourcescope-mongo
+    container_name: partscope-mongo
     restart: unless-stopped
     ports:
       - "${MONGO_PORT:-27018}:27017"
     volumes:
-      - sourcescope-mongodata:/data/db
+      - partscope-mongodata:/data/db
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 5s
@@ -51,5 +51,5 @@ services:
       retries: 20
 
 volumes:
-  sourcescope-pgdata:
-  sourcescope-mongodata:
+  partscope-pgdata:
+  partscope-mongodata:

@@ -16,7 +16,7 @@ export function createApp() {
 
   app.get('/', (_req, res) => {
     res.json({
-      service: 'Source Scope API',
+      service: 'PartScope API',
       version: '0.3.0',
       data: 'synthetic - see docs/data-sources.md',
       endpoints: [

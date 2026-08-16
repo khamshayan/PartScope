@@ -124,7 +124,7 @@ export default function App() {
         <div className="mx-auto max-w-[1500px] px-6 py-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <div>
-              <h1 className="text-lg font-semibold tracking-tight text-ink">Source Scope</h1>
+              <h1 className="text-lg font-semibold tracking-tight text-ink">PartScope</h1>
               <p className="text-sm text-ink-secondary">
                 RFQ triage and price-band recommendation
               </p>

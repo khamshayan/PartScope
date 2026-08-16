@@ -65,7 +65,7 @@ def existing_counts() -> tuple[int, int]:
 
 def main() -> int:
     settings = get_settings()
-    parser = argparse.ArgumentParser(description="Seed Source Scope's datastores")
+    parser = argparse.ArgumentParser(description="Seed PartScope's datastores")
     parser.add_argument("--force", action="store_true",
                         help="overwrite existing seeded data")
     parser.add_argument("--count", type=int, default=settings.catalog_size)

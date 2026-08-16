@@ -21,7 +21,7 @@ from pathlib import Path
 
 from app.config import DATA_DIR
 
-log = logging.getLogger("sourcescope.model_cache")
+log = logging.getLogger("partscope.model_cache")
 
 CACHE_DIR = DATA_DIR / "cache"
 MODEL_PATH = CACHE_DIR / "serving_gbm.joblib"
