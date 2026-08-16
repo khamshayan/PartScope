@@ -298,18 +298,18 @@ look better and mean nothing.
 
 ## Project status
 
-Built in phases, each with tests and a commit boundary.
+Built in phases, each with tests.
 
-| Phase | Scope | State |
+| Phase | Scope |
 |---|---|---|
-| 0 | Scaffold, Docker datastores, synthetic data generators | **done** |
-| 1 | Part matcher + accuracy evaluation | **done** |
-| 2 | Pricing engine, forecasters, backtest | **done** |
-| 3 | FastAPI + Express service layer | **done** |
-| 4 | React dashboard | **done** |
-| 5 | Email and spreadsheet parsing | **done** |
-| 6 | AS6171 test-flow routing | **done** |
-| 7 | Packaging and docs | **done** |
+| 0 | Scaffold, Docker datastores, synthetic data generators
+| 1 | Part matcher + accuracy evaluation
+| 2 | Pricing engine, forecasters, backtest
+| 3 | FastAPI + Express service layer
+| 4 | React dashboard
+| 5 | Email and spreadsheet parsing
+| 6 | AS6171 test-flow routing
+| 7 | Packaging and docs
 
 185 tests: 164 Python (`pytest`), 21 Node (`vitest`), plus a TypeScript
 typecheck on the web app. `make test` runs the suites.
@@ -318,3 +318,7 @@ typecheck on the web app. `make test` runs the suites.
 
 Personal portfolio project. Not affiliated with, endorsed by, or reviewed by any
 manufacturer or distributor named in the generated data.
+
+## Development notes
+
+Built with AI assistance. 
