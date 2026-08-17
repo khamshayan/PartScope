@@ -48,6 +48,7 @@ class Settings:
     history_weeks: int
 
     nexar_api_key: str
+    mouser_api_key: str
 
     @property
     def pg_dsn(self) -> str:
@@ -72,6 +73,7 @@ def get_settings() -> Settings:
         catalog_size=_int("CATALOG_SIZE", 8000),
         history_weeks=_int("PRICE_HISTORY_WEEKS", 104),
         nexar_api_key=os.getenv("NEXAR_API_KEY", "").strip(),
+        mouser_api_key=os.getenv("MOUSER_API_KEY", "").strip(),
     )
 
 

@@ -58,16 +58,41 @@ interesting, not fitted to any observed market.
 - No commercial or proprietary dataset.
 - No scraped distributor or broker pricing.
 - No customer, RFQ, or transaction data from any company.
-- No external API calls at any point in the pipeline. The project runs offline.
+- No external API calls in the default pipeline. With no API key set — which is
+  the normal case — the project runs entirely offline.
 
 ## The optional real-data path
 
-`ml-service/data/adapters/nexar_adapter.py` implements the same interface as the
-generator against the Nexar (Octopart) API. It exists to demonstrate that the
-architecture accepts a real feed — it is not the default path, it is not
-exercised by the test suite, and with no `NEXAR_API_KEY` present the pipeline
-logs a notice and uses the generator. Nothing in this repository ships with
-credentials.
+Two adapters sit behind the same interface as the generator. Neither is the
+default path, neither is exercised by the test suite, and nothing in this
+repository ships with credentials.
+
+`ml-service/data/adapters/nexar_adapter.py` (Nexar / Octopart) is a **stub**:
+every method raises, and the docstring says which parts are unbuilt. It exists
+to mark the seam.
+
+`ml-service/data/adapters/mouser_adapter.py` (Mouser Search API) is
+**implemented**. `parts()` really fetches a catalog, maps Mouser's taxonomy onto
+the thirteen categories used here, and parses `ProductAttributes` into the same
+`datasheet_specs` shapes the generator produces. Run it against your own key
+with:
+
+```
+python ml-service/data/adapters/mouser_adapter.py --limit 50
+```
+
+Three caveats matter more than the code does:
+
+- **It is not reproducible.** A live catalog changes daily, so none of the
+  figures quoted in the README hold against it.
+- **There is no price history.** `price_history()` raises. Mouser publishes
+  current distributor price breaks — one point in time from one authorized
+  seller — not the weekly multi-broker quote series the forecasters train on.
+  Pairing a real catalog with the synthetic price generator gives you real part
+  numbers carrying invented prices, which is worse than either alone.
+- **Two fields are not in the feed.** `date_introduced` is empty, so the risk
+  model's age rule does not fire; `is_defense_grade` is inferred from military
+  part-number markers rather than read from a flag.
 
 ## What actually transfers
 
