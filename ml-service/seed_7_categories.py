@@ -16,12 +16,19 @@ keywords = [
     "crystal oscillator",
 ]
 
-all_parts = []
-for kw in keywords:
-    adapter = MouserAdapter(key, keywords=(kw,), limit=30)
-    parts = list(adapter.parts())
-    print(f"{kw}: {len(parts)} parts")
-    all_parts.extend(parts)
+LIMIT_PER_CATEGORY = 1000
 
-written = write_to_mongo(all_parts)
-print(f"\nwrote {written} total parts to mongo")
+good_parts = []
+total_fetched = 0
+for kw in keywords:
+    adapter = MouserAdapter(key, keywords=(kw,), limit=LIMIT_PER_CATEGORY)
+    parts = list(adapter.parts())
+    total_fetched += len(parts)
+    with_specs = [p for p in parts if p.get("datasheet_specs")]
+    dropped = len(parts) - len(with_specs)
+    print(f"{kw}: {len(parts)} fetched, {len(with_specs)} kept, {dropped} dropped (empty specs)")
+    good_parts.extend(with_specs)
+
+written = write_to_mongo(good_parts)
+print(f"\nfetched {total_fetched} total, kept {len(good_parts)} with real specs")
+print(f"wrote {written} parts to mongo")

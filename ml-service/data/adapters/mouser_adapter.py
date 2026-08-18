@@ -285,6 +285,504 @@ def _voltage_range(attrs: dict[str, str], min_names: tuple[str, ...],
 
 
 # ---------------------------------------------------------------------------
+# Description-text parsing
+# ---------------------------------------------------------------------------
+# `ProductAttributes` is thin for most of the catalog -- for a lot of parts it
+# is "Packaging" and "Standard Pack Qty" and nothing electrical -- while the
+# same figures sit in plain text in `Description`:
+#
+#   "Multilayer Ceramic Capacitors MLCC - SMD/SMT 630V 0.033uF C0G 1210 5%"
+#
+# So every value below is found by its *unit*, never by its position. Field
+# order is a house style: ST writes "1200 V, 8.5 mOhm typ., 239 A" and Infineon
+# writes "OptiMOS 8 Power MOSFET, 80 V", and any parser that counted tokens
+# would read Infineon's marketing series number as a voltage.
+#
+# The unit is also the honesty check. "RCA0402 22K 5% 200 ET7 E3" is a 22 kOhm
+# resistor to a human, but the text never says Ohm and the "200" is unlabelled,
+# so this parser returns the 5% and nothing else. A field with no unit behind it
+# is omitted, on the same grounds as the attribute path: the alternates ranking
+# compares the numeric fields two parts share, so a guessed value is worse than
+# an absent one.
+#
+# Only seven of the thirteen categories are covered, because only seven have
+# descriptions worth parsing. Zener diodes, FPGAs, SRAM, flash, circular
+# connectors and logic gates were sampled against the live API and their
+# descriptions carry marketing text and package codes rather than values; they
+# are left on the attribute path alone.
+
+# Case matters in an SI prefix and nothing else does: "8.5 mOhm" is milli,
+# "2KOhm" is kilo, "330UF" is micro. Only m/M genuinely collide, so those two
+# are the only ones read case-sensitively.
+_DESC_PREFIX = {"": 1.0, "p": 1e-12, "P": 1e-12, "n": 1e-9, "N": 1e-9,
+                "u": 1e-6, "U": 1e-6, "µ": 1e-6, "μ": 1e-6,
+                "m": 1e-3, "M": 1e6, "k": 1e3, "K": 1e3, "g": 1e9, "G": 1e9}
+
+# Numbers in descriptions include the bare-decimal form: ".680 Ohm".
+_D_NUM = r"(?:\d+(?:\.\d+)?|\.\d+)"
+
+# Descriptions quote the part number inside themselves -- "RCA0402 22K 5%",
+# "NEX91730PB-Q100/SOT8063/HSO8" -- so a digit that is part of a longer token
+# is not a measurement. This guard is what stops "ERJ-PC3B2001V" being read as
+# 2001 volts. It has to allow a leading "-" and "." so that "+/-1%" and the
+# decimals inside a number still match.
+_D_LEFT = r"(?<![A-Za-z0-9.])"
+
+# Number and unit are separated by a space, nothing, or a hyphen: Vishay writes
+# "60-V (D-S)" where ST writes "1200 V". The hyphen is only safe here because
+# the guard above already rules out part-number fragments.
+_D_GAP = r"[\s-]*"
+
+# Unit words are matched case-insensitively -- "OHM", "Ohm" and "ohm" are one
+# unit -- while SI prefixes stay case-sensitive, because m and M are two
+# different prefixes and nothing else is.
+
+# "0.1%", "+/-1%", "±10%", "5%". The sign marker is optional because half the
+# manufacturers omit it.
+_D_TOLERANCE_RE = re.compile(rf"(?:\+/-|±)?\s*{_D_LEFT}({_D_NUM})\s*%")
+
+# Resistance, and only where the text says so: "2KOhm", ".680 Ohm", "8.5 mOhm".
+# The prefix is optional, the word is not -- this is what keeps "22K 5%" out.
+_D_OHM_RE = re.compile(rf"{_D_LEFT}({_D_NUM}){_D_GAP}([kKmMuUµμgG]?)\s*(?i:ohms?)\b")
+
+# "0.1W", "250 mW", "3W", "1.5 Watt". Anchored on a number so the W of a word
+# cannot start a match.
+_D_WATT_RE = re.compile(rf"{_D_LEFT}({_D_NUM}){_D_GAP}([mMuUµμkK]?)(?i:w(?:att)?s?)\b")
+
+# "630V", "38 V", "1.62V", "60-V", "12VDC".
+_D_VOLT_RE = re.compile(rf"{_D_LEFT}({_D_NUM}){_D_GAP}([mMuUµμkK]?)(?i:v(?:dc|olts?)?)\b")
+
+# "0.033uF", "3300pF", "33nF", "330UF".
+_D_FARAD_RE = re.compile(rf"{_D_LEFT}({_D_NUM}){_D_GAP}([pPnNuUµμmM]?)(?i:f)\b")
+
+# "25ppm", "50 PPM". _NO_PREFIX_UNITS exists for the same reason on the
+# attribute side: the p is part of the unit.
+_D_PPM_RE = re.compile(rf"{_D_LEFT}({_D_NUM})\s*ppm", re.IGNORECASE)
+
+# "25MHz", "38.4000MHZ", "20 MHz". The prefix is read case-insensitively here
+# and only here: a part quoted in millihertz does not exist, so "MHZ" and "mhz"
+# are both mega.
+_D_HZ_RE = re.compile(rf"{_D_LEFT}({_D_NUM})\s*([kKmMgG]?)(?i:hz)\b")
+
+# "400 mA", "45uA", "239 A". Uppercase A only: a lowercase "a" is a word far
+# more often than it is an amp.
+_D_AMP_RE = re.compile(rf"{_D_LEFT}({_D_NUM}){_D_GAP}([mMuUµμnN]?)A\b")
+
+# "32KB", "64KB Flash", "4KB RAM". The B is required, so the "8" of "8-bit"
+# and the "128" of "128 Basic Logic Elements" are both left alone. Uppercase B
+# only: a lowercase b is bits, which is a different field's unit.
+_D_BYTES_RE = re.compile(rf"{_D_LEFT}({_D_NUM})\s*([kKmMgG])B\b")
+
+# "-40C - 85C", "-40 to +85C", "-40C ~ +125C". The separator list is the same
+# one _RANGE_SPLIT_RE uses, plus a hyphen, which is safe here only because both
+# ends are pinned by a literal C.
+_D_TEMP_RANGE_RE = re.compile(
+    r"([-+]?\d+)\s*°?C\s*(?:to|~|–|—|-)\s*([-+]?\d+)\s*°?C", re.IGNORECASE)
+# A lone "85C". Guarded on both sides so that a package or dielectric code --
+# 1210, C0G -- cannot supply the digits.
+_D_TEMP_ONE_RE = re.compile(r"(?<![\w.])([-+]?\d+)\s*°?C(?![a-zA-Z0-9])")
+
+# EIA dielectric codes. Matched against a closed list rather than "the token
+# after the voltage", because the token after the voltage is "BX" as often as
+# it is "X7R" and BX is not a value this project's vocabulary has.
+_D_DIELECTRIC_RE = re.compile(
+    r"\b(C0G|NP0|NPO|X5R|X6S|X7R|X7S|X8R|X8L|Y5V|Z5U|U2J)\b", re.IGNORECASE)
+
+# Oscillator output stage. Longest first: LVCMOS must be tested before CMOS
+# would match inside it.
+_D_OUTPUT_TYPE_RE = re.compile(
+    r"\b(LVCMOS|LVPECL|LVDS|HCMOS|CMOS|TTL|Clipped Sine|Sine Wave)\b",
+    re.IGNORECASE)
+
+# Regulator topology, again from a closed list. "low-dropout" and "LDO" are the
+# same claim written two ways.
+_D_TOPOLOGY_RE = re.compile(
+    r"\b(LDO|low[- ]dropout|buck[- ]?boost|buck|boost|linear)\b", re.IGNORECASE)
+_TOPOLOGY_NAMES = {"ldo": "LDO", "low-dropout": "LDO", "low dropout": "LDO",
+                   "buck-boost": "Buck-Boost", "buckboost": "Buck-Boost",
+                   "buck boost": "Buck-Boost", "buck": "Buck",
+                   "boost": "Boost", "linear": "Linear"}
+
+# "N-Channel", "P-channel", "N Channel".
+_D_CHANNEL_RE = re.compile(r"\b([NP])[-\s]?channel\b", re.IGNORECASE)
+
+# MCU core, where it is named at all. Most 8-bit descriptions do not name one.
+_D_CORE_RE = re.compile(
+    r"\b(ARM\s+Cortex-[MARamr]\d+\+?F?|Cortex-[MARamr]\d+\+?|8051|AVR|"
+    r"PIC\d{2}|RISC-V|MIPS)\b")
+
+# "10b ADCC", "12-bit ADC", "12 Bit ADC". The ADC has to follow, so the "8b"
+# of "8b DAC" is not read as converter resolution.
+_D_ADC_RE = re.compile(r"(\d+)\s*-?\s*b(?:it)?s?\s*ADC", re.IGNORECASE)
+
+
+def _scaled(number: str, prefix: str = "") -> float | None:
+    """"330", "U" -> 3.3e-4. The SI base value, as on the attribute path."""
+    try:
+        value = float(number)
+    except ValueError:
+        return None
+    return value * _DESC_PREFIX.get(prefix, 1.0)
+
+
+def _desc_first(pattern: re.Pattern, text: str, scale: float = 1.0,
+                cast: type = float, skip: int = 0) -> float | int | None:
+    """First match of `pattern`, converted into the field's own unit."""
+    for index, match in enumerate(pattern.finditer(text)):
+        if index < skip:
+            continue
+        groups = match.groups()
+        value = _scaled(groups[0], groups[1] if len(groups) > 1 else "")
+        if value is None:
+            continue
+        value *= scale
+        return int(round(value)) if cast is int else round(value, 6)
+    return None
+
+
+def _desc_megahertz(text: str) -> float | None:
+    """First frequency in the text, in MHz.
+
+    Its own function because the prefix is the one place case does not carry
+    meaning: "38.4000MHZ" and "38.4 mhz" are both megahertz, since no catalogue
+    part is specified in millihertz.
+    """
+    for match in _D_HZ_RE.finditer(text):
+        value = _scaled(match.group(1), match.group(2).upper())
+        if value is not None:
+            return round(value * 1e-6, 6)
+    return None
+
+
+def _desc_near(text: str, match: re.Match, words: str, window: int = 40) -> bool:
+    """Is one of `words` written within `window` characters of this match?
+
+    Descriptions qualify their numbers by adjacency rather than by structure --
+    "45uA quiescent current", "8.5 mOhm typ." -- so proximity is the only handle
+    on which of two same-unit figures is which.
+    """
+    start = max(0, match.start() - window)
+    return re.search(words, text[start:match.end() + window],
+                     re.IGNORECASE) is not None
+
+
+def _desc_temp_range(text: str) -> dict | None:
+    """A stated operating range, or one end of one.
+
+    A lone "85C" is a maximum and a lone "-40C" is a minimum: no manufacturer
+    quotes a single positive figure as the cold end. The other end is left out
+    rather than assumed.
+    """
+    match = _D_TEMP_RANGE_RE.search(text)
+    if match:
+        return {"min_c": int(match.group(1)), "max_c": int(match.group(2))}
+    match = _D_TEMP_ONE_RE.search(text)
+    if match:
+        value = int(match.group(1))
+        return {"min_c": value} if value < 0 else {"max_c": value}
+    return None
+
+
+def _fill_from_description(specs: dict, parsed: dict) -> dict:
+    """Merge description-derived fields into the attribute-derived ones.
+
+    Attributes win wherever they exist. This is per-field rather than an
+    all-or-nothing fallback because the sparse case is usually partial: Mouser
+    supplies a capacitor's Packaging and nothing else, or its voltage rating and
+    nothing else, and there is no reason to throw away the one attribute that
+    was there in order to use the text.
+    """
+    for key, value in parsed.items():
+        if value is None:
+            continue
+        current = specs.get(key)
+        if current is None:
+            specs[key] = value
+        elif isinstance(current, dict) and isinstance(value, dict):
+            for sub_key, sub_value in value.items():
+                current.setdefault(sub_key, sub_value)
+    return specs
+
+
+def _description(part: dict) -> str:
+    return (part.get("Description") or "").strip()
+
+
+# -- per-category description parsers ---------------------------------------
+
+def _desc_resistor(text: str) -> dict:
+    """"...0603 thin film res, 0.1%, 25ppm 2KOhm" -> 0.1 %, 25 ppm, 2000 Ohm.
+
+    Resistance is taken only from a number carrying the word Ohm. Working
+    voltage is taken from a bare volts figure, which for a resistor is the only
+    thing volts can mean.
+    """
+    return _compact({
+        "resistance_ohm": _desc_first(_D_OHM_RE, text),
+        "tolerance_pct": _desc_first(_D_TOLERANCE_RE, text),
+        "power_rating_w": _desc_first(_D_WATT_RE, text),
+        "tcr_ppm": _desc_first(_D_PPM_RE, text),
+        "voltage_rating_v": _desc_first(_D_VOLT_RE, text),
+        "temp_range": _desc_temp_range(text),
+    })
+
+
+def _desc_capacitor(text: str) -> dict:
+    """"630V 0.033uF C0G 1210 5%" -> 33000 pF, 630 V, C0G, 5 %.
+
+    Covers the tantalum lines too ("330UF   50V 10%  T4R"); they are the same
+    three units in a different order, which is exactly what unit-matching is
+    for. ESR is only read from an Ohm figure that says ESR next to it, since a
+    bare Ohm figure in a capacitor description is more often a bleeder or a
+    test condition.
+    """
+    dielectric = None
+    match = _D_DIELECTRIC_RE.search(text)
+    if match:
+        code = match.group(1).upper()
+        dielectric = "NP0" if code == "NPO" else code
+
+    esr = None
+    for ohm_match in _D_OHM_RE.finditer(text):
+        if _desc_near(text, ohm_match, r"esr|equivalent series", window=20):
+            esr = round((_scaled(*ohm_match.groups()) or 0.0) * 1e3, 6)
+            break
+
+    return _compact({
+        "capacitance_pf": _desc_first(_D_FARAD_RE, text, 1e12),
+        "tolerance_pct": _desc_first(_D_TOLERANCE_RE, text),
+        "voltage_rating_v": _desc_first(_D_VOLT_RE, text),
+        "dielectric": dielectric,
+        "esr_mohm": esr,
+        "temp_range": _desc_temp_range(text),
+    })
+
+
+def _desc_regulator(text: str) -> dict:
+    """"LDO Voltage Regulators 400 mA, 38 V low-dropout regulator, with 45uA
+    quiescent current" -> LDO, 0.4 A out, 38 V in, 45 uA quiescent.
+
+    Two decisions worth stating, because both are conventions rather than
+    readings:
+
+    - Amps are split by adjacency. The figure written near "quiescent" or "Iq"
+      is the quiescent current; the first of the rest is the output current.
+      Without that, "45uA" would be read as a 45-microamp regulator.
+    - A bare volts figure is the maximum *input* voltage. For a regulator the
+      headline voltage is its rating, not its output -- an adjustable part has
+      no single output voltage to quote. Output voltage is filled only when the
+      text labels it.
+    """
+    amps = [match for match in _D_AMP_RE.finditer(text)]
+    quiescent = None
+    output_current = None
+    for match in amps:
+        value = _scaled(*match.groups())
+        if value is None:
+            continue
+        if quiescent is None and _desc_near(text, match, r"quiescent|\bIq\b"):
+            quiescent = round(value * 1e6, 6)
+        elif output_current is None and not _desc_near(
+                text, match, r"leakage|standby|shutdown"):
+            output_current = round(value, 6)
+
+    topology = None
+    match = _D_TOPOLOGY_RE.search(text)
+    if match:
+        topology = _TOPOLOGY_NAMES.get(match.group(1).lower().replace("_", "-"))
+
+    # Only a labelled figure: "3.3V output", "output voltage 1.8V", "Vout 5V".
+    # "out" on its own is not a label -- it is the tail of "without".
+    output_voltage = None
+    labelled = re.search(
+        rf"\b(?:output|V\s?out|fixed)\b[^,;.]{{0,18}}?({_D_NUM})\s*([mM]?)V\b"
+        rf"|({_D_NUM})\s*([mM]?)V\s*\b(?:output|out)\b", text, re.IGNORECASE)
+    if labelled:
+        groups = [g for g in labelled.groups() if g is not None]
+        if groups:
+            output_voltage = round(_scaled(groups[0],
+                                           groups[1] if len(groups) > 1 else "") or 0.0, 6)
+
+    # "dropout" then a number, never a number then "dropout": the phrase
+    # "38 V low-dropout regulator" would otherwise report a 38 V dropout.
+    dropout = None
+    match = re.search(rf"dropout(?:\s*voltage)?(?:\s*of)?\s*(?:is\s*)?"
+                      rf"({_D_NUM})\s*([mM]?)V\b", text, re.IGNORECASE)
+    if match:
+        dropout = round((_scaled(*match.groups()) or 0.0) * 1e3, 6)
+
+    return _compact({
+        "topology": topology,
+        "output_voltage_v": output_voltage,
+        "input_voltage_max_v": _desc_first(_D_VOLT_RE, text),
+        "output_current_max_a": output_current,
+        "dropout_mv": dropout,
+        "efficiency_pct": None,
+        "quiescent_current_ua": quiescent,
+        "temp_range": _desc_temp_range(text),
+    })
+
+
+def _desc_fet(text: str) -> dict:
+    """"...Power MOSFET 1200 V, 8.5 mOhm typ., 239 A in a STPAK..." ->
+    1200 V, 8.5 mOhm, 239 A.
+
+    Channel type is only filled when the text says N-channel or P-channel.
+    Almost every discrete power MOSFET is N-channel, which is exactly why
+    inferring it would be the kind of guess that looks right until it isn't.
+    """
+    current = None
+    for match in _D_AMP_RE.finditer(text):
+        if _desc_near(text, match, r"leakage|gate|quiescent"):
+            continue
+        value = _scaled(*match.groups())
+        if value is not None:
+            current = round(value, 6)
+            break
+
+    channel = None
+    match = _D_CHANNEL_RE.search(text)
+    if match:
+        channel = "P-Channel" if match.group(1).upper() == "P" else "N-Channel"
+
+    # Both of these need their own label; a bare volts figure is V_DS and a
+    # bare charge figure is unusual enough not to assume.
+    threshold = None
+    match = re.search(rf"(?:Vgs\s*\(?th\)?|gate\s*threshold|threshold)"
+                      rf"[^,;.]{{0,18}}?({_D_NUM})\s*([mM]?)V\b", text, re.IGNORECASE)
+    if match:
+        threshold = round(_scaled(*match.groups()) or 0.0, 6)
+
+    # A bare "C" is coulombs here and degrees Celsius three words later, so the
+    # label is what separates them -- and every candidate has to be tested,
+    # since "-40C - 85C" would otherwise consume the only look.
+    gate_charge = None
+    for match in re.finditer(rf"({_D_NUM})\s*([pnu]?)C\b", text):
+        if _desc_near(text, match, r"gate|\bQg\b|charge", window=20):
+            gate_charge = round((_scaled(*match.groups()) or 0.0) * 1e9, 6)
+            break
+
+    return _compact({
+        "channel_type": channel,
+        "vds_max_v": _desc_first(_D_VOLT_RE, text),
+        "id_continuous_a": current,
+        "rds_on_mohm": _desc_first(_D_OHM_RE, text, 1e3),
+        "vgs_threshold_v": threshold,
+        "gate_charge_nc": gate_charge,
+        "temp_range": _desc_temp_range(text),
+    })
+
+
+def _desc_mcu(text: str) -> dict:
+    """"8-bit Microcontrollers - MCU 32KB,20MHz,85C,1.62V,PDID,PTC,ADC,..." ->
+    32 KB flash, 20 MHz, max 85 C, min 1.62 V.
+
+    Memory sizes are assigned by the word that follows them -- "64KB Flash,
+    4KB RAM" is unambiguous -- and an unlabelled size is read as flash, which
+    is the near-universal convention in these listings (nobody leads with the
+    RAM figure). RAM is never filled from an unlabelled figure.
+
+    A single supply voltage is read as the minimum: the figure quoted alone in
+    an MCU listing is the low end of the operating range, which is the number
+    that distinguishes the part.
+    """
+    flash = ram = None
+    unlabelled: list[float] = []
+    for match in _D_BYTES_RE.finditer(text):
+        value = _scaled(*match.groups())
+        if value is None:
+            continue
+        kilobytes = round(value * 1e-3, 6)
+        tail = text[match.end():match.end() + 14].lower()
+        if "flash" in tail or "program" in tail:
+            flash = flash if flash is not None else kilobytes
+        elif "ram" in tail:
+            ram = ram if ram is not None else kilobytes
+        elif "eeprom" in tail or "rom" in tail:
+            continue
+        else:
+            unlabelled.append(kilobytes)
+    if flash is None and unlabelled:
+        flash = unlabelled[0]
+
+    # A written range wins, because "1.62-5.5V" carries its V once at the end
+    # and the two ends would otherwise read as a single 5.5 V minimum.
+    voltage_range = None
+    span = re.search(rf"{_D_LEFT}({_D_NUM})\s*(?i:v)?\s*(?:to|~|-)\s*"
+                     rf"({_D_NUM})\s*(?i:v)\b", text)
+    if span:
+        low, high = float(span.group(1)), float(span.group(2))
+        voltage_range = {"min_v": min(low, high), "max_v": max(low, high)}
+    else:
+        voltages = []
+        for match in _D_VOLT_RE.finditer(text):
+            value = _scaled(*match.groups())
+            if value is not None:
+                voltages.append(round(value, 6))
+        if len(voltages) == 1:
+            voltage_range = {"min_v": voltages[0]}
+        elif voltages:
+            voltage_range = {"min_v": min(voltages), "max_v": max(voltages)}
+
+    core = None
+    match = _D_CORE_RE.search(text)
+    if match:
+        core = match.group(1)
+
+    adc_bits = None
+    match = _D_ADC_RE.search(text)
+    if match:
+        adc_bits = int(match.group(1))
+
+    return _compact({
+        "core": core,
+        "flash_kb": flash,
+        "ram_kb": ram,
+        "max_freq_mhz": _desc_megahertz(text),
+        "gpio_count": None,
+        "adc_bits": adc_bits,
+        "operating_voltage": voltage_range,
+        "temp_range": _desc_temp_range(text),
+    })
+
+
+def _desc_oscillator(text: str) -> dict:
+    """"...Crystal Oscillator 3225 4-SMD 25MHz 50ppm -40C - 85C CMOS 1.2V" ->
+    25 MHz, 50 ppm, -40..85 C, CMOS.
+
+    A ppm figure written next to "stability" is stability; otherwise it is
+    frequency tolerance, which is what a lone ppm figure means on every
+    oscillator line card sampled. The supply voltage at the end has nowhere to
+    go -- this category's spec shape has no voltage field -- so it is dropped
+    rather than filed somewhere it does not belong.
+    """
+    tolerance = stability = None
+    for match in _D_PPM_RE.finditer(text):
+        value = _scaled(match.group(1))
+        if value is None:
+            continue
+        if _desc_near(text, match, r"stab", window=25):
+            stability = stability if stability is not None else round(value, 6)
+        elif tolerance is None:
+            tolerance = round(value, 6)
+
+    output_type = None
+    match = _D_OUTPUT_TYPE_RE.search(text)
+    if match:
+        output_type = match.group(1).upper()
+
+    return _compact({
+        "frequency_mhz": _desc_megahertz(text),
+        "frequency_tolerance_ppm": tolerance,
+        "load_capacitance_pf": _desc_first(_D_FARAD_RE, text, 1e12),
+        "esr_ohm": None,
+        "stability_ppm": stability,
+        "output_type": output_type,
+        "temp_range": _desc_temp_range(text),
+    })
+
+
+# ---------------------------------------------------------------------------
 # Spec builders -- one per category
 # ---------------------------------------------------------------------------
 # These mirror the `_specs_*` functions in generate_catalog.py field for field,
@@ -294,7 +792,7 @@ def _voltage_range(attrs: dict[str, str], min_names: tuple[str, ...],
 # attribute.
 
 def _specs_mcu(attrs: dict[str, str], part: dict) -> dict:
-    return _compact({
+    specs = _compact({
         "core": _text(attrs, ("coreprocessor", "processorcore", "core", "cpucore")),
         "flash_kb": _num(attrs, ("programmemorysize", "flashsize",
                                  "programmemory", "memorysize"), 1e-3),
@@ -313,6 +811,7 @@ def _specs_mcu(attrs: dict[str, str], part: dict) -> dict:
         ),
         "temp_range": _temp_range(attrs),
     })
+    return _fill_from_description(specs, _desc_mcu(_description(part)))
 
 
 def _specs_opamp(attrs: dict[str, str], part: dict) -> dict:
@@ -347,7 +846,7 @@ def _specs_capacitor(attrs: dict[str, str], part: dict) -> dict:
     haystack = f"{part.get('Category', '')} {part.get('Description', '')}".lower()
     if "tantalum" in haystack:
         dielectric = "Tantalum"
-    return _compact({
+    specs = _compact({
         "capacitance_pf": _num(attrs, ("capacitance",), 1e12),
         "tolerance_pct": _num(attrs, ("capacitancetolerance", "tolerance")),
         "voltage_rating_v": _num(attrs, ("voltageratingdc", "dcvoltagerating",
@@ -356,10 +855,11 @@ def _specs_capacitor(attrs: dict[str, str], part: dict) -> dict:
         "esr_mohm": _num(attrs, ("equivalentseriesresistance", "esr"), 1e3),
         "temp_range": _temp_range(attrs),
     })
+    return _fill_from_description(specs, _desc_capacitor(_description(part)))
 
 
 def _specs_resistor(attrs: dict[str, str], part: dict) -> dict:
-    return _compact({
+    specs = _compact({
         "resistance_ohm": _num(attrs, ("resistance",)),
         "tolerance_pct": _num(attrs, ("resistancetolerance", "tolerance")),
         "power_rating_w": _num(attrs, ("powerrating", "powerdissipation", "power")),
@@ -368,6 +868,7 @@ def _specs_resistor(attrs: dict[str, str], part: dict) -> dict:
                                          "voltagerating")),
         "temp_range": _temp_range(attrs),
     })
+    return _fill_from_description(specs, _desc_resistor(_description(part)))
 
 
 def _specs_logic(attrs: dict[str, str], part: dict) -> dict:
@@ -414,7 +915,7 @@ def _specs_fet(attrs: dict[str, str], part: dict) -> dict:
     if polarity:
         channel = "P-Channel" if re.search(r"\bp", polarity, re.IGNORECASE) \
             else "N-Channel"
-    return _compact({
+    specs = _compact({
         "channel_type": channel,
         "vds_max_v": _num(attrs, ("drainsourcevoltagevdss", "drainsourcevoltage",
                                   "drainsourcebreakdownvoltage", "vdss")),
@@ -427,10 +928,11 @@ def _specs_fet(attrs: dict[str, str], part: dict) -> dict:
         "gate_charge_nc": _num(attrs, ("totalgatecharge", "gatecharge", "qg"), 1e9),
         "temp_range": _temp_range(attrs),
     })
+    return _fill_from_description(specs, _desc_fet(_description(part)))
 
 
 def _specs_regulator(attrs: dict[str, str], part: dict) -> dict:
-    return _compact({
+    specs = _compact({
         "topology": _text(attrs, ("topology", "regulatortopology",
                                   "outputtype", "type")),
         "output_voltage_v": _num(attrs, ("outputvoltage", "voltageoutput",
@@ -445,6 +947,7 @@ def _specs_regulator(attrs: dict[str, str], part: dict) -> dict:
                                              "currentquiescent"), 1e6),
         "temp_range": _temp_range(attrs),
     })
+    return _fill_from_description(specs, _desc_regulator(_description(part)))
 
 
 def _specs_fpga(attrs: dict[str, str], part: dict) -> dict:
@@ -524,7 +1027,7 @@ def _specs_connector(attrs: dict[str, str], part: dict) -> dict:
 
 
 def _specs_oscillator(attrs: dict[str, str], part: dict) -> dict:
-    return _compact({
+    specs = _compact({
         "frequency_mhz": _num(attrs, ("nominalfrequency", "outputfrequency",
                                       "frequency"), 1e-6),
         "frequency_tolerance_ppm": _num(attrs, ("frequencytolerance", "tolerance")),
@@ -534,6 +1037,7 @@ def _specs_oscillator(attrs: dict[str, str], part: dict) -> dict:
         "output_type": _text(attrs, ("outputtype", "output", "logictype")),
         "temp_range": _temp_range(attrs),
     })
+    return _fill_from_description(specs, _desc_oscillator(_description(part)))
 
 
 # ---------------------------------------------------------------------------
@@ -988,6 +1492,11 @@ def main() -> int:
         for part in parts[:args.sample]:
             print(f"      {part['mpn']:<30} {part['manufacturer']:<20} "
                   f"{part['lifecycle_status']:<9} {part['description']}")
+            # The specs are the point of the sample: they are what has to be
+            # checked against the description printed on the line above.
+            specs = part["datasheet_specs"]
+            print(f"      {'':<30} {'':<20} {'specs:':<9} "
+                  f"{json.dumps(specs, sort_keys=True) if specs else '{} (empty)'}")
 
     if not args.write:
         print("\ndry run: nothing written")
