@@ -1,6 +1,15 @@
 import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 
+// Auth off, explicitly, before config.js reads the environment. These tests are
+// about the route contract and say nothing about the gate -- auth.test.js owns
+// that. Pinning it here rather than inheriting it means the suite gives the
+// same answer whether or not the developer running it has credentials in their
+// own .env. dotenv does not overwrite a key that is already set, empty ones
+// included, so this wins over the file.
+process.env.AUTH_USER = '';
+process.env.AUTH_PASSWORD = '';
+
 // The ML service and both datastores are stubbed. These tests are about the
 // HTTP contract -- validation, status codes, error shape -- and should pass
 // without anything running.

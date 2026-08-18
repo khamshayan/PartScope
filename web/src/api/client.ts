@@ -8,6 +8,43 @@ import type { ApiErrorBody, PartDetail, RfqResponse, Session } from './types';
  * telling the person in front of it nothing they can act on.
  */
 
+/**
+ * Where the API lives, as seen from the browser.
+ *
+ * Empty in local dev. `vite.config.ts` proxies /api to the Node process, so a
+ * relative path keeps the browser on one origin -- which is also why the
+ * session cookie works there without any CORS involved at all. That proxy is a
+ * dev-server feature and does not survive `npm run build`, so a static host
+ * needs the real API origin instead.
+ *
+ * Note this is read at BUILD time, not at runtime: Vite inlines VITE_* values
+ * into the bundle when it builds. On Vercel it has to be set as a project
+ * environment variable before the build, and changing it later means a rebuild,
+ * not a restart.
+ *
+ * The trailing-slash strip is not decoration: a base pasted from a dashboard
+ * URL bar arrives as "https://api.example.com/" and would otherwise produce
+ * "https://api.example.com//api/me".
+ */
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+
+const apiUrl = (path: string) => `${API_BASE_URL}${path}`;
+
+/**
+ * Every request carries the session cookie.
+ *
+ * `credentials: 'include'` rather than the default 'same-origin', because on a
+ * static host the API is a different origin and the default would silently drop
+ * the cookie -- turning every gated route into a 401 with nothing on screen to
+ * explain why. Same-origin dev is unaffected: 'include' behaves identically
+ * there.
+ *
+ * This is on all six calls, not just the login ones. Every route behind
+ * `requireAuth` needs the cookie, which is all of them -- only the `/` service
+ * banner is public.
+ */
+const WITH_SESSION = { credentials: 'include' } as const;
+
 export class ApiFailure extends Error {
   readonly code: string;
   readonly status: number;
@@ -40,13 +77,19 @@ async function toFailure(response: Response): Promise<ApiFailure> {
 }
 
 function networkFailure(error: unknown): ApiFailure {
+  // The useful half of this hint is *where* the client was pointed. "Is the API
+  // running on port 3000?" is the right question locally and actively
+  // misleading on a deployed build, where the answer is whether the configured
+  // origin is reachable and whether it allows this one.
+  const where = API_BASE_URL
+    ? `Is ${API_BASE_URL} reachable, and does it allow requests from this origin?`
+    : 'Is the API running on port 3000?';
+
   return new ApiFailure(
     'Could not reach the PartScope API.',
     'NETWORK',
     0,
-    error instanceof Error && error.message
-      ? `${error.message}. Is the API running on port 3000?`
-      : 'Is the API running on port 3000?',
+    error instanceof Error && error.message ? `${error.message}. ${where}` : where,
   );
 }
 
@@ -65,7 +108,7 @@ function networkFailure(error: unknown): ApiFailure {
 export async function fetchSession(): Promise<Session | null> {
   let response: Response;
   try {
-    response = await fetch('/api/me');
+    response = await fetch(apiUrl('/api/me'), { ...WITH_SESSION });
   } catch {
     return null;
   }
@@ -77,7 +120,8 @@ export async function fetchSession(): Promise<Session | null> {
 export async function login(username: string, password: string): Promise<Session> {
   let response: Response;
   try {
-    response = await fetch('/api/login', {
+    response = await fetch(apiUrl('/api/login'), {
+      ...WITH_SESSION,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
@@ -96,7 +140,7 @@ export async function login(username: string, password: string): Promise<Session
  */
 export async function logout(): Promise<void> {
   try {
-    await fetch('/api/logout', { method: 'POST' });
+    await fetch(apiUrl('/api/logout'), { ...WITH_SESSION, method: 'POST' });
   } catch {
     // Deliberately swallowed; see above.
   }
@@ -108,7 +152,8 @@ export async function analyzeText(
 ): Promise<RfqResponse> {
   let response: Response;
   try {
-    response = await fetch('/api/rfq', {
+    response = await fetch(apiUrl('/api/rfq'), {
+      ...WITH_SESSION,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ raw_text: rawText, source_type: 'text' }),
@@ -132,7 +177,14 @@ export async function analyzeFile(
 
   let response: Response;
   try {
-    response = await fetch('/api/rfq', { method: 'POST', body: form, signal });
+    // No Content-Type header on purpose: the browser sets it with the
+    // multipart boundary, which cannot be written by hand.
+    response = await fetch(apiUrl('/api/rfq'), {
+      ...WITH_SESSION,
+      method: 'POST',
+      body: form,
+      signal,
+    });
   } catch (error) {
     if ((error as Error)?.name === 'AbortError') throw error;
     throw networkFailure(error);
@@ -149,7 +201,9 @@ export async function analyzeFile(
 export async function fetchPart(mpn: string): Promise<PartDetail> {
   let response: Response;
   try {
-    response = await fetch(`/api/part/${encodeURIComponent(mpn)}`);
+    response = await fetch(apiUrl(`/api/part/${encodeURIComponent(mpn)}`), {
+      ...WITH_SESSION,
+    });
   } catch (error) {
     throw networkFailure(error);
   }
