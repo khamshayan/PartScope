@@ -4,10 +4,18 @@ RFQ triage for the electronic-component secondary market: paste a messy request
 for quote, get back a clean sheet of matched parts, price bands, forecasts and
 counterfeit-test recommendations.
 
-> **Demo data — synthetically generated.** Every part and every price in this
-> project is fabricated by a seeded generator. See
-> [docs/data-sources.md](docs/data-sources.md).
+> **Real parts, synthetic pricing.** The deployed catalog is 6,286 real
+> components pulled from Mouser's Search API. Every price, forecast and
+> volatility figure is produced by a seeded generator and corresponds to no real
+> quote or market. See [docs/data-sources.md](docs/data-sources.md) before
+> drawing any conclusion from a number this project prints.
 
+**Live:** <https://partscope.vercel.app> — requires a login; credentials are not
+in this repository. The services sleep when idle, so the first request after a
+quiet period takes a few minutes to wake them and refit the serving forecaster.
+
+<!-- STALE: recapture. Shows the old "Demo data — synthetically generated"
+     banner, no "Log out" control, and synthetic part numbers. -->
 ![The PartScope dashboard: a messy RFQ on the left, matched and priced line items on the right](docs/images/dashboard.png)
 
 Fifteen messy lines in, fourteen matched, in about 700ms. The rows worth a
@@ -18,6 +26,8 @@ full AS6171 test flow.
 Clicking a row shows the reasoning, including the arithmetic behind the test
 recommendation:
 
+<!-- STALE: recapture. Scored against a synthetic part; the "introduced 34 years
+     ago +10" row cannot occur on Mouser data, which carries no introduction date. -->
 ![Test-flow breakdown: EOL +30, no authorized stock +20, elevated market +8, defense grade +15, introduced 34 years ago +10, total 83, Full AS6171, 36h of a 48h target](docs/images/test-flow.png)
 
 ---
@@ -34,6 +44,16 @@ make demo      # databases up, data seeded, all three services running
 ```
 
 Then open <http://localhost:5173> and press **Load example**.
+
+`make setup` copies `.env.example` to `.env`, which ships with a placeholder
+`AUTH_USER` / `AUTH_PASSWORD` pair. Change them, or blank both — with either
+blank the API runs unauthenticated and the dashboard loads straight in, which is
+what keeps a clean clone runnable with no configuration. The API prints which of
+the two states it booted in.
+
+**`make demo` seeds the synthetic catalog, not the real one.** The real
+Mouser-sourced catalog is a separate manual step; see
+[Using the real catalog](#using-the-real-catalog).
 
 On Windows, where `make` is not installed, the same targets are available as
 `./make.ps1 setup` and `./make.ps1 demo`.
@@ -55,6 +75,25 @@ starts take about 3 seconds.
 
 </details>
 
+## Using the real catalog
+
+Two scripts, both manual, both needing a `MOUSER_API_KEY` in `.env`:
+
+```bash
+python ml-service/seed_7_categories.py          # fetch and write the real catalog
+python ml-service/generate_real_price_history.py # synthetic prices for those MPNs
+```
+
+The first pulls parts across seven keyword searches that map onto six of this
+project's categories, keeping only parts whose specs actually parsed. The second
+generates price history keyed to the real part numbers — Mouser publishes
+current distributor price breaks, not the weekly multi-broker series the
+forecasters train on, so the prices remain generated.
+
+Doing this replaces the synthetic catalog, which means the matcher test cases no
+longer resolve and `make test` will report failures against them. That is
+expected: the cases reference generated MPNs. See
+[Matcher accuracy](#matcher-accuracy).
 
 ## The problem
 
@@ -86,16 +125,56 @@ FastAPI      :8000  ---- PostgreSQL  price history, RFQs, line items
 ```
 
 Two datastores because the data genuinely differs in shape: `datasheet_specs`
-is a different object for an op-amp than for a circular connector, while price
-history is 2.8M uniform time-series rows that want window functions and
-percentiles. Full rationale in [docs/architecture.md](docs/architecture.md).
+is a different object for a microcontroller than for a crystal oscillator, while
+price history is millions of uniform time-series rows that want window functions
+and percentiles. Full rationale in [docs/architecture.md](docs/architecture.md).
+
+## Deployment
+
+| Piece | Host | Configured by |
+|---|---|---|
+| React frontend | Vercel (static build) | `VITE_API_BASE_URL`, inlined at build time |
+| Express API | Render | `API_PORT`, `WEB_ORIGIN`, `AUTH_*` |
+| FastAPI ml-service | Render | reached only by the Express API, via `ML_SERVICE_URL` |
+| Parts catalog | MongoDB Atlas | `MONGO_URI`, `MONGO_DB` |
+| Price history, RFQs | Neon Postgres | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
+
+The ml-service is not browser-facing. Only the Express API is, which is why the
+session cookie and the CORS allowlist live there.
+
+Frontend and API sit on different registrable domains, so the session cookie is
+issued `SameSite=None; Secure` (`AUTH_COOKIE_SAMESITE`) and the API reflects only
+the origins named in `WEB_ORIGIN` — a comma-separated list where `*` matches one
+label, so one entry covers every Vercel preview URL. A wildcard
+`Access-Control-Allow-Origin` cannot be combined with credentials, so the
+allowed origin is echoed back specifically.
+
+## Login
+
+One username/password pair from the environment. No user table, no signup, no
+reset — there is exactly one account.
+
+`POST /api/login` checks `AUTH_USER` / `AUTH_PASSWORD` and sets an httpOnly,
+Secure, SameSite cookie holding an HMAC-SHA256-signed token with a 12-hour
+expiry; `POST /api/logout` clears it; `GET /api/me` is the "am I signed in"
+check the dashboard makes before rendering. Every other route is behind the
+gate, health included — only the `/` service banner is public.
+
+`AUTH_SESSION_SECRET` signs the token. Left unset it is regenerated per boot, so
+restarting the API signs everyone out. Because the token is stateless, logout
+clears the cookie but cannot revoke a copy already taken; changing the secret or
+`AUTH_USER` invalidates every outstanding token at once.
 
 ## Matcher accuracy
 
-Measured on 60 hand-written messy inputs in
-[`ml-service/data/test_cases.json`](ml-service/data/test_cases.json) — 50 real
-parts across nine kinds of mess, plus 10 deliberately non-existent parts that
-must come back `no_match`. Reproduce with `make test`.
+**Measured against the seeded synthetic catalog** (`make seed`), not the
+deployed real one — the 60 test cases in
+[`ml-service/data/test_cases.json`](ml-service/data/test_cases.json) reference
+generated MPNs, so they resolve only in that state. 50 real parts across nine
+kinds of mess, plus 10 deliberately non-existent parts that must come back
+`no_match`. Reproduce with `make seed && make test`. The matcher has not been
+re-evaluated against the real catalog; doing so needs a new labelled set, which
+is discussed under [what I'd do differently](#what-id-do-differently-with-real-data).
 
 | Metric | Result |
 |---|---|
@@ -129,7 +208,9 @@ Latency: ~13 ms per line to match, ~7 ms including alternates, against an
 ## Forecast accuracy
 
 Rolling-origin walk-forward backtest: 500 parts, 25 origins, 37,500 predictions.
-Train on weeks `0..t`, predict `t+1`, advance. Full commentary in
+Train on weeks `0..t`, predict `t+1`, advance. Measured on the synthetic price
+history, which is the only price data this project has ever had — the real
+catalog changed the part numbers, not the pricing model. Full commentary in
 [docs/backtest-results.md](docs/backtest-results.md).
 
 | Segment | `naive` | `sarima` | `gbm` |
@@ -184,9 +265,12 @@ A line that matched nothing gets **no** recommendation. You cannot route a test
 flow for a part you have not identified, and a score built from the one signal
 that happens to exist would be worse than saying so.
 
-## Getting an RFQ in
+On the real catalog two of these signals fire less than they did on generated
+data. Mouser publishes no introduction date, so the age rule never fires, and
+defense grade is inferred from military part-number markers rather than read
+from a flag. Both are noted in [docs/data-sources.md](docs/data-sources.md).
 
-### Getting an RFQ in
+## Getting an RFQ in
 
 Three ways in, one shape out. Sample files are in [sample-rfqs/](sample-rfqs/).
 
@@ -227,24 +311,57 @@ One page. Paste on the left, results on the right.
   the table. A line that silently vanished between the paste and the results is
   the one failure mode a buyer would never catch.
 
+**Load example** draws one of five RFQs at random, each built from part numbers
+confirmed present in the real catalog and roughened the way real requests
+arrive — distributor order codes, lowercase pastes, O-for-zero typos, a
+truncation, a comma inside an MPN, tab-separated paste and quoted reply chains.
+Each carries at least one part that cannot be matched, so the no-match path
+stays visible.
+
 ## Data
 
-8,000 parts and ~2.8M weekly broker quotes, generated deterministically from one
-seed. About a quarter of the catalog is Obsolete or EOL with zero authorized
-stock — those are the interesting cases. About 18% of parts carry an injected
-shortage event whose quote dispersion widens sharply during the spike, which is
-the signal the volatility flag reads.
+Two datasets, and the distinction between them is the most important thing on
+this page.
 
-**None of it is real.** Read [docs/data-sources.md](docs/data-sources.md) before
-drawing any conclusion from a number this project prints.
+| Dataset | Rows | Source | Real? |
+|---|---|---|---|
+| Parts catalog (deployed) | 6,286 | Mouser Search API | **Real** |
+| Parts catalog (`make seed`) | 8,000 | seeded generator | Synthetic |
+| Price history, both | ~2.2M / ~2.8M weekly quotes | seeded generator | Synthetic |
 
-[`ml-service/data/adapters/nexar_adapter.py`](ml-service/data/adapters/nexar_adapter.py)
-sketches the same interface against the Nexar (Octopart) API and falls back to
-the generator when `NEXAR_API_KEY` is absent. **It is a stub whose methods
-raise** — it exists to show that the data source is behind a seam, not to
-provide a working feed. Its docstring says exactly which parts are unbuilt, the
-hardest being that Nexar returns current distributor offers rather than the
-weekly broker-quote history the forecasters train on.
+**The deployed catalog is real.** 6,286 parts across six categories — 1,821
+capacitors, 1,006 voltage regulators, 963 resistors, 948 crystal oscillators,
+935 microcontrollers, 613 power FETs — with real manufacturer part numbers,
+real manufacturers, real packages and specifications parsed from Mouser's own
+product data. Six categories, not the thirteen the generator covers: the other
+seven had descriptions too inconsistent to parse specs from reliably, and a part
+with no specs is no use to the alternates ranking.
+
+**No price in this project is real, anywhere.** Mouser publishes current
+distributor price breaks, which is one point in time from one authorized seller
+— not the weekly multi-broker quote series this project is about. So price
+history, price bands, forecasts, market-heat and shortage events are all
+generated, now keyed to real part numbers. That combination is deliberate but
+worth naming: real MPNs carrying invented prices look more authoritative than
+they are.
+
+Real distributor data is also far healthier than the generator's. Of the 6,286
+real parts, 6,218 are Active, 58 NRND and 10 EOL, and only nine have no
+authorized stock. The synthetic catalog puts about a quarter of parts in
+Obsolete or EOL with zero stock, and gives about 18% of parts an injected
+shortage event — which is why the generated set remains the better exercise of
+the risk and volatility paths, and why the demo examples name the specific real
+parts that do carry those states.
+
+Two adapters sit behind the same interface as the generator.
+[`mouser_adapter.py`](ml-service/data/adapters/mouser_adapter.py) is implemented
+and is where the real catalog comes from; it maps Mouser's taxonomy onto this
+project's categories, parses `ProductAttributes` into `datasheet_specs`, and
+falls back to reading specs out of the description text where the attributes are
+empty — which for most parts they are.
+[`nexar_adapter.py`](ml-service/data/adapters/nexar_adapter.py) is **a stub
+whose methods raise**; it exists to show the data source sits behind a seam, and
+its docstring says exactly which parts are unbuilt.
 
 ## What I'd do differently with real data
 
@@ -268,10 +385,11 @@ own price path at all — it is that three related parts from the same fab proce
 already spiked. That means a panel model with category and process-node
 features, which is a different shape of problem from the per-part series here.
 
-**The matcher would need a real evaluation set, not 60 hand-written cases.**
-96% top-1 on cases I wrote myself is a smoke test, not a measurement — I know
-what mess I thought to include. The honest version samples real RFQ line items,
-has a human label them, and reports accuracy with a confidence interval. I would
+**The matcher needs a real evaluation set, not 60 hand-written cases.** 96%
+top-1 on cases I wrote myself is a smoke test, not a measurement — I know what
+mess I thought to include. Now that the catalog is real this is the most
+immediately actionable gap: the honest version samples real RFQ line items, has
+a human label them, and reports accuracy with a confidence interval. I would
 also expect whole categories of mess I did not imagine: OCR output from scanned
 faxes, customer-internal part numbers with no relationship to the MPN, and
 Chinese-market equivalents.
@@ -310,14 +428,19 @@ Built in phases, each with tests.
 | 5 | Email and spreadsheet parsing |
 | 6 | AS6171 test-flow routing |
 | 7 | Packaging and docs |
+| 8 | Real Mouser catalog, session auth, deployment |
 
-185 tests: 164 Python (`pytest`), 21 Node (`vitest`), plus a TypeScript
-typecheck on the web app. `make test` runs the suites.
+209 tests: 164 Python (`pytest`), 45 Node (`vitest`), plus a TypeScript
+typecheck on the web app. `make test` runs the suites — against a synthetic
+seed, for the reason given under [Matcher accuracy](#matcher-accuracy).
 
 ## Licence
 
-Personal portfolio project. Not affiliated with, endorsed by, or reviewed by any
-manufacturer or distributor named in the generated data.
+Personal portfolio project. Catalog data is retrieved from Mouser Electronics'
+public Search API and remains theirs; it is used here for a non-commercial
+demonstration. Not affiliated with, endorsed by, or reviewed by Mouser or any
+manufacturer named in the catalog. All pricing shown is generated and is not
+Mouser pricing.
 
 ## Development notes
 
