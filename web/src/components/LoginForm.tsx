@@ -114,8 +114,9 @@ export function LoginForm({ onSignedIn }: Props) {
           </form>
 
           <p className="mt-4 text-xs text-ink-muted">
-            Demo instance. Parts, prices and shortages are produced by a seeded
-            generator and do not correspond to real components or real market data.
+            Demo instance. The parts catalog is real component data from Mouser&apos;s
+            distributor API. Prices, forecasts and market activity are produced by a
+            seeded generator and do not correspond to real quotes.
           </p>
         </div>
       </main>

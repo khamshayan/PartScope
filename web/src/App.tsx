@@ -214,9 +214,10 @@ export default function App() {
             and a reader who misses that will misread all of them. */}
         <div className="border-t border-status-warn/30 bg-status-warnSoft">
           <div className="mx-auto max-w-[1500px] px-6 py-2 text-xs text-status-warnInk">
-            <strong className="font-semibold">Demo data — synthetically generated.</strong>{' '}
-            Parts, prices and shortages are produced by a seeded generator and do not
-            correspond to real components or real market data. See{' '}
+            <strong className="font-semibold">Real parts, synthetic pricing.</strong>{' '}
+            The catalog is real component data from Mouser&apos;s distributor API. Every
+            price, forecast and market-heat figure is produced by a seeded generator and
+            does not correspond to real quotes or real market activity. See{' '}
             <code className="font-mono">docs/data-sources.md</code>.
           </div>
         </div>

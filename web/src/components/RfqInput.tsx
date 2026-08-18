@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 
-import { SAMPLE_RFQ } from '../sampleRfq';
+import { pickSampleRfq } from '../sampleRfq';
 
 interface Props {
   value: string;
@@ -44,7 +44,8 @@ export function RfqInput({
         </label>
         <button
           type="button"
-          onClick={() => onChange(SAMPLE_RFQ)}
+          // A fresh draw per click, so clicking twice can change the example.
+          onClick={() => onChange(pickSampleRfq())}
           disabled={loading}
           className="text-xs font-medium text-accent hover:text-accent-hover disabled:text-ink-muted"
         >
