@@ -111,15 +111,27 @@ export function readCookie(req, name) {
 }
 
 /**
- * `sameSite: 'lax'` rather than 'strict': the dashboard is one origin behind
- * the Vite proxy, and 'strict' would drop the cookie on a plain link into the
- * app for no gain here.
+ * Cookie attributes, shared by the set and the clear so they cannot drift.
+ *
+ * `sameSite` is configuration rather than a constant because the two
+ * deployments genuinely need different values, and neither works in the
+ * other's place:
+ *
+ * - Local dev is same-origin behind the Vite proxy. 'lax' is correct there and
+ *   keeps the browser's own cross-site protection, which is worth having.
+ * - Vercel frontend against a Render API is cross-*site*, not merely
+ *   cross-origin: different registrable domains. A 'lax' cookie is never sent
+ *   on cross-site fetch, so the session would appear to work at login and then
+ *   silently not exist on the next request.
+ *
+ * 'none' hands the whole cross-site question to CORS, which is why the origin
+ * check in app.js is the thing actually holding the line in production.
  */
 export function sessionCookieOptions() {
   return {
     httpOnly: true,
     secure: config.auth.secure,
-    sameSite: 'lax',
+    sameSite: config.auth.sameSite,
     path: '/',
   };
 }

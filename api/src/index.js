@@ -13,6 +13,22 @@ const server = app.listen(config.port, () => {
   // failure mode this feature exists to prevent.
   if (config.auth.enabled) {
     console.log(`[api] session auth enabled for user "${config.auth.user}"`);
+    console.log(
+      `[api] session cookie: SameSite=${config.auth.sameSite}; ` +
+        `${config.auth.secure ? 'Secure' : 'NOT Secure'}; HttpOnly`,
+    );
+    if (config.web.allowsAnyOrigin) {
+      // The dangerous pair, and the only combination worth shouting about:
+      // reflecting every origin while also accepting cookies means any page a
+      // signed-in user visits can call this API as them and read the answer.
+      console.warn(
+        '[api] CORS is reflecting ANY origin with credentials. Any site a ' +
+          'signed-in user visits can call this API as them. Set WEB_ORIGIN to ' +
+          'your frontend origins (comma separated, * matches one label) to close this.',
+      );
+    } else {
+      console.log(`[api] CORS origins allowed: ${config.web.origins.join(', ')}`);
+    }
   } else {
     console.warn(
       '[api] AUTH_USER/AUTH_PASSWORD are unset - the API is NOT protected. ' +

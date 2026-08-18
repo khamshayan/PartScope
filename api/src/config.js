@@ -26,6 +26,25 @@ const bool = (value, fallback) => {
 const authUser = (process.env.AUTH_USER ?? '').trim();
 const authPassword = (process.env.AUTH_PASSWORD ?? '').trim();
 
+// Origins permitted to send credentialed cross-origin requests. Comma
+// separated, and `*` inside an entry matches one label, so a single
+// "https://partscope-*.vercel.app" covers every preview deployment without
+// naming them.
+const webOrigins = (process.env.WEB_ORIGIN ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const SAMESITE_VALUES = new Set(['none', 'lax', 'strict']);
+const requestedSameSite = (process.env.AUTH_COOKIE_SAMESITE ?? '').trim().toLowerCase();
+// A cross-site deployment (Vercel frontend, Render API -- different registrable
+// domains) needs None, because Lax is not sent on cross-site fetch at all.
+// Local dev is same-origin behind the Vite proxy, where Lax is both sufficient
+// and the safer of the two, so the default follows NODE_ENV.
+const cookieSameSite = SAMESITE_VALUES.has(requestedSameSite)
+  ? requestedSameSite
+  : (process.env.NODE_ENV === 'production' ? 'none' : 'lax');
+
 export const config = {
   port: int(process.env.API_PORT, 3000),
 
@@ -45,7 +64,21 @@ export const config = {
     // Browsers accept Secure cookies over http://localhost, so this can stay
     // on in development. It is a knob only because Safari has historically
     // disagreed; turn it off for plain-http testing, never in production.
-    secure: bool(process.env.AUTH_COOKIE_SECURE, true),
+    //
+    // Forced on under SameSite=None because the spec requires it: a None
+    // cookie without Secure is rejected outright, so honouring an explicit
+    // `false` here would mean issuing a cookie no browser will ever store.
+    secure: cookieSameSite === 'none' ? true : bool(process.env.AUTH_COOKIE_SECURE, true),
+    sameSite: cookieSameSite,
+  },
+
+  web: {
+    origins: webOrigins,
+    // Unset, or an explicit "*", means every origin is reflected back. That is
+    // what makes credentialed requests work from a Vercel preview URL nobody
+    // has listed yet -- and it is also the loosest setting there is, so
+    // index.js says so at boot.
+    allowsAnyOrigin: webOrigins.length === 0 || webOrigins.includes('*'),
   },
 
   postgres: {
