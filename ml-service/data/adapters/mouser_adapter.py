@@ -987,7 +987,7 @@ def main() -> int:
         print("\n  sample:")
         for part in parts[:args.sample]:
             print(f"      {part['mpn']:<30} {part['manufacturer']:<20} "
-                  f"{part['lifecycle_status']:<9} {part['description'][:52]}")
+                  f"{part['lifecycle_status']:<9} {part['description']}")
 
     if not args.write:
         print("\ndry run: nothing written")
