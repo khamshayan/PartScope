@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -15,8 +16,37 @@ const int = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const bool = (value, fallback) => {
+  if (value === undefined || value.trim() === '') return fallback;
+  return !/^(0|false|no)$/i.test(value.trim());
+};
+
+// Trimmed, because a credential with a stray trailing space from a copy-paste
+// into .env would fail to match and give no clue why.
+const authUser = (process.env.AUTH_USER ?? '').trim();
+const authPassword = (process.env.AUTH_PASSWORD ?? '').trim();
+
 export const config = {
   port: int(process.env.API_PORT, 3000),
+
+  auth: {
+    user: authUser,
+    password: authPassword,
+    // Both halves have to be present. A blank pair means the API is open,
+    // which is what keeps a clean clone runnable with no configuration at all
+    // -- the same rule every other default here follows. Setting both turns
+    // protection on; index.js says which state it booted in.
+    enabled: Boolean(authUser && authPassword),
+    cookieName: process.env.AUTH_COOKIE_NAME ?? 'partscope_session',
+    // Unset means a fresh secret per boot, so a restart signs everyone out.
+    // That is the safe default: a hardcoded fallback secret would let anyone
+    // holding this source forge a session against a deployed instance.
+    secret: (process.env.AUTH_SESSION_SECRET ?? '').trim() || randomBytes(32).toString('hex'),
+    // Browsers accept Secure cookies over http://localhost, so this can stay
+    // on in development. It is a knob only because Safari has historically
+    // disagreed; turn it off for plain-http testing, never in production.
+    secure: bool(process.env.AUTH_COOKIE_SECURE, true),
+  },
 
   postgres: {
     host: process.env.POSTGRES_HOST ?? 'localhost',

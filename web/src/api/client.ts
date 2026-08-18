@@ -1,4 +1,4 @@
-import type { ApiErrorBody, PartDetail, RfqResponse } from './types';
+import type { ApiErrorBody, PartDetail, RfqResponse, Session } from './types';
 
 /**
  * Thin API client.
@@ -48,6 +48,58 @@ function networkFailure(error: unknown): ApiFailure {
       ? `${error.message}. Is the API running on port 3000?`
       : 'Is the API running on port 3000?',
   );
+}
+
+/**
+ * "Am I signed in?", asked once before the dashboard renders.
+ *
+ * Returns null for signed-out rather than throwing, because that is an ordinary
+ * answer to this question and not a failure. A server with no credentials
+ * configured answers 200 with `auth_required: false`, so an unconfigured clone
+ * goes straight to the dashboard instead of a login form it could never pass.
+ *
+ * A network failure also reads as signed-out: the login form is the only thing
+ * that can be usefully shown, and the attempt from it surfaces the real error
+ * with a message worth reading.
+ */
+export async function fetchSession(): Promise<Session | null> {
+  let response: Response;
+  try {
+    response = await fetch('/api/me');
+  } catch {
+    return null;
+  }
+  if (response.status === 401) return null;
+  if (!response.ok) throw await toFailure(response);
+  return (await response.json()) as Session;
+}
+
+export async function login(username: string, password: string): Promise<Session> {
+  let response: Response;
+  try {
+    response = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+  } catch (error) {
+    throw networkFailure(error);
+  }
+  if (!response.ok) throw await toFailure(response);
+  return (await response.json()) as Session;
+}
+
+/**
+ * Never rejects. The cookie is httpOnly, so the browser cannot clear it on its
+ * own and there is nothing useful for the user to do about a failed logout --
+ * the caller drops the session either way and lands back on the login form.
+ */
+export async function logout(): Promise<void> {
+  try {
+    await fetch('/api/logout', { method: 'POST' });
+  } catch {
+    // Deliberately swallowed; see above.
+  }
 }
 
 export async function analyzeText(

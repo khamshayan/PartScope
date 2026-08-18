@@ -29,6 +29,8 @@ export class ApiError extends Error {
 export const badRequest = (message, details) =>
   new ApiError(400, 'BAD_REQUEST', message, details);
 
+export const unauthorized = (message) => new ApiError(401, 'UNAUTHORIZED', message);
+
 export const notFound = (message) => new ApiError(404, 'NOT_FOUND', message);
 
 export const payloadTooLarge = (message) =>

@@ -1,11 +1,23 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { ApiFailure, analyzeFile, analyzeText, fetchPart } from './api/client';
-import type { LineItem, RfqResponse } from './api/types';
+import {
+  ApiFailure,
+  analyzeFile,
+  analyzeText,
+  fetchPart,
+  fetchSession,
+  logout,
+} from './api/client';
+import type { LineItem, RfqResponse, Session } from './api/types';
+import { LoginForm } from './components/LoginForm';
 import { ResultsPanel } from './components/ResultsPanel';
 import { RfqInput } from './components/RfqInput';
 
 export default function App() {
+  // undefined = the check has not come back yet, null = signed out. The three
+  // states are distinct: rendering the login form while the check is still in
+  // flight would flash it at someone who is already signed in.
+  const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [text, setText] = useState('');
   const [result, setResult] = useState<RfqResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -16,6 +28,33 @@ export default function App() {
   // Lets a slow analyse be cancelled, and stops an abandoned request from
   // landing on top of a newer one.
   const inFlight = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchSession()
+      .then((found) => {
+        if (!cancelled) setSession(found);
+      })
+      .catch(() => {
+        if (!cancelled) setSession(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleLogout = useCallback(async () => {
+    inFlight.current?.abort();
+    await logout();
+    // Everything the previous session loaded goes with it. Leaving an analysed
+    // RFQ on screen behind a login form would be the one thing signing out is
+    // supposed to prevent.
+    setSession(null);
+    setResult(null);
+    setText('');
+    setUploadedFile(null);
+    setError(null);
+  }, []);
 
   const run = useCallback(async (task: (signal: AbortSignal) => Promise<RfqResponse>) => {
     inFlight.current?.abort();
@@ -28,6 +67,14 @@ export default function App() {
       setResult(await task(controller.signal));
     } catch (caught) {
       if ((caught as Error)?.name === 'AbortError') return;
+      // An expired session mid-session: send them back to the login form
+      // rather than showing "Sign in to use this endpoint" as an analysis
+      // error they cannot act on from here.
+      if (caught instanceof ApiFailure && caught.status === 401) {
+        setSession(null);
+        setResult(null);
+        return;
+      }
       setError(
         caught instanceof ApiFailure
           ? caught
@@ -118,6 +165,16 @@ export default function App() {
     [],
   );
 
+  // Nothing until the session check answers. It is one same-origin request, so
+  // this is a frame or two -- a spinner here would flash more than it informs.
+  if (session === undefined) {
+    return <div className="min-h-screen bg-page" />;
+  }
+
+  if (session === null) {
+    return <LoginForm onSignedIn={setSession} />;
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-page text-ink">
       <header className="border-b border-hairline bg-surface">
@@ -129,13 +186,27 @@ export default function App() {
                 RFQ triage and price-band recommendation
               </p>
             </div>
-            <a
-              className="text-xs text-ink-muted hover:text-accent"
-              href="https://github.com"
-              onClick={(event) => event.preventDefault()}
-            >
-              secondary-market component sourcing
-            </a>
+            <div className="flex items-baseline gap-4">
+              <a
+                className="text-xs text-ink-muted hover:text-accent"
+                href="https://github.com"
+                onClick={(event) => event.preventDefault()}
+              >
+                secondary-market component sourcing
+              </a>
+              {/* Only when there is a session to end. On a server with no
+                  credentials configured there is nothing to log out of, and
+                  offering it would imply a protection that is not there. */}
+              {session.auth_required && (
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="text-xs text-ink-muted hover:text-accent"
+                >
+                  {session.username ? `${session.username} · ` : ''}Log out
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

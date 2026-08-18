@@ -7,6 +7,18 @@
  * false. The UI has to render absence as absence.
  */
 
+/**
+ * Answer from GET /api/me.
+ *
+ * `auth_required` is false when the server has no credentials configured. That
+ * is not the same as being signed in, and the header uses the difference: an
+ * open server has no session to end, so it shows no "Log out".
+ */
+export interface Session {
+  username: string | null;
+  auth_required: boolean;
+}
+
 export type VolatilityFlag = 'STABLE' | 'ELEVATED' | 'VOLATILE';
 
 export type MatchMethod =
