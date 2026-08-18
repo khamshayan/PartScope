@@ -10,25 +10,32 @@ counterfeit-test recommendations.
 > quote or market. See [docs/data-sources.md](docs/data-sources.md) before
 > drawing any conclusion from a number this project prints.
 
-**Live:** <https://partscope.vercel.app> — requires a login; credentials are not
-in this repository. The services sleep when idle, so the first request after a
-quiet period takes a few minutes to wake them and refit the serving forecaster.
+**Live:** <https://part-scope-tdjb.vercel.app> — requires a login; credentials
+are not in this repository. The services sleep when idle, so the first request
+after a quiet period takes a few minutes to wake them and refit the serving
+forecaster.
 
-<!-- STALE: recapture. Shows the old "Demo data — synthetically generated"
-     banner, no "Log out" control, and synthetic part numbers. -->
-![The PartScope dashboard: a messy RFQ on the left, matched and priced line items on the right](docs/images/dashboard.png)
+![The PartScope dashboard: an aerospace RFQ pasted on the left, eight matched and priced line items on the right, one flagged Elevated and routed to an Enhanced test flow](docs/images/dashboard.png)
 
-Fifteen messy lines in, fourteen matched, in about 700ms. The rows worth a
-buyer's attention are the ones flagged at the bottom — obsolete and end-of-life
-parts whose brokers have stopped agreeing on price, five of which route to a
-full AS6171 test flow.
+Twenty-two pasted lines reduce to nine part numbers — the mail header, the
+prose and the sign-off are stripped — and eight of them match against the real
+catalog. The ninth, `NOPART-000-XX`, is unmatchable and is reported as such
+rather than being forced onto a near neighbour.
+
+The row worth a buyer's attention is `RC1210FR-0716KL`: the only line above its
+own baseline heat, and the only one routed past a Standard test flow.
 
 Clicking a row shows the reasoning, including the arithmetic behind the test
 recommendation:
 
-<!-- STALE: recapture. Scored against a synthetic part; the "introduced 34 years
-     ago +10" row cannot occur on Mouser data, which carries no introduction date. -->
-![Test-flow breakdown: EOL +30, no authorized stock +20, elevated market +8, defense grade +15, introduced 34 years ago +10, total 83, Full AS6171, 36h of a 48h target](docs/images/test-flow.png)
+![Expanded detail for M39014/05-2046: a 52-week price sparkline, exact match on a normalized key, Active with 154 in authorized stock, an empty introduced date, a test-flow breakdown of +15 defense grade for 15 total routing to Standard at 4h of a 48h target, and cross-manufacturer alternates from KYOCERA AVX and Vishay](docs/images/test-flow.png)
+
+Two details in that panel are worth reading closely. **Introduced** is empty,
+because Mouser publishes no introduction date — so the age rule contributes
+nothing and the score is 15 rather than 25. And the alternates for this KEMET
+capacitor come from KYOCERA AVX and Vishay: cross-manufacturer by construction,
+ranked on spec distance, which is the substitution a buyer actually needs when
+the original is unobtainable.
 
 ---
 
@@ -131,13 +138,13 @@ and percentiles. Full rationale in [docs/architecture.md](docs/architecture.md).
 
 ## Deployment
 
-| Piece | Host | Configured by |
-|---|---|---|
-| React frontend | Vercel (static build) | `VITE_API_BASE_URL`, inlined at build time |
-| Express API | Render | `API_PORT`, `WEB_ORIGIN`, `AUTH_*` |
-| FastAPI ml-service | Render | reached only by the Express API, via `ML_SERVICE_URL` |
-| Parts catalog | MongoDB Atlas | `MONGO_URI`, `MONGO_DB` |
-| Price history, RFQs | Neon Postgres | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
+| Piece | Host | Address | Configured by |
+|---|---|---|---|
+| React frontend | Vercel (static build) | [part-scope-tdjb.vercel.app](https://part-scope-tdjb.vercel.app) | `VITE_API_BASE_URL`, inlined at build time |
+| Express API | Render | [partscope-1.onrender.com](https://partscope-1.onrender.com) | `API_PORT`, `WEB_ORIGIN`, `AUTH_*` |
+| FastAPI ml-service | Render | internal | reached only by the Express API, via `ML_SERVICE_URL` |
+| Parts catalog | MongoDB Atlas | — | `MONGO_URI`, `MONGO_DB` |
+| Price history, RFQs | Neon Postgres | — | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` |
 
 The ml-service is not browser-facing. Only the Express API is, which is why the
 session cookie and the CORS allowlist live there.

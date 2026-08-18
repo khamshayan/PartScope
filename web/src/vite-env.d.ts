@@ -2,7 +2,7 @@
 
 interface ImportMetaEnv {
   /**
-   * Origin of the Express API, e.g. "https://partscope-api.onrender.com".
+   * Origin of the Express API, e.g. "https://partscope-1.onrender.com".
    *
    * Unset in local dev, where vite.config.ts proxies /api instead and the
    * client falls back to relative paths. Required for a static build whose
