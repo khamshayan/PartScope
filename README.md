@@ -9,10 +9,8 @@ counterfeit-test recommendations.
 > generated and do not reflect real quotes. See
 > [docs/data-sources.md](docs/data-sources.md).
 
-**Live demo:** <https://part-scope-tdjb.vercel.app>
+**Live demo:** <https://www.partscope.online>
 Login: `admin` / `pass` — public demo credentials, no sign-up needed.
-Services sleep when idle, so the first request after inactivity can take a
-minute to wake up.
 
 ![PartScope dashboard: a pasted RFQ on the left, matched and priced line items on the right](docs/images/dashboard.png)
 
