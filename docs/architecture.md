@@ -24,6 +24,12 @@ flowchart TD
     E -->|"enriched rows"| B
 ```
 
+The same flow with the return path drawn in — nineteen steps from paste to
+rendered row, showing which calls are batched and where the work actually
+happens:
+
+![Sequence diagram of one RFQ end to end: the browser posts to the Express API, which authenticates and validates before calling FastAPI to parse and analyse; FastAPI reads price history from PostgreSQL in one query, Express enriches from MongoDB in one query and persists to PostgreSQL in a single transaction, and the enriched rows return to the browser](images/request-sequence.png)
+
 ## Where the line falls
 
 Express owns request validation, persistence and error shaping. FastAPI owns
@@ -32,7 +38,7 @@ risk.
 
 That split is worth more than it looks. Because no analysis logic lives behind
 the web tier, the whole pipeline is exercisable from `pytest` with nothing
-running: 164 of the project's 185 tests never open a socket. It also meant that
+running: 164 of the project's 209 tests never open a socket. It also meant that
 when parsing outgrew its first implementation in Phase 5, there was exactly one
 place to put the replacement.
 
@@ -61,14 +67,21 @@ Fifteen messy lines complete this in roughly 700 ms.
 
 Two caches make that possible, and both are deliberate:
 
-- **Catalog index** — 8,000 parts loaded into memory once at startup (~550 ms).
-  At this size an in-memory index beats a query per lookup by orders of
-  magnitude, and it is what makes prefix and fuzzy matching affordable.
+- **Catalog index** — the entire catalog loaded into memory once at startup
+  (~550 ms): 8,000 generated parts after `make seed`, or the 6,286 real ones in
+  the deployed build. At either size an in-memory index beats a query per lookup
+  by orders of magnitude, and it is what makes prefix and fuzzy matching
+  affordable.
 - **Serving forecaster** — the gradient booster takes ~70 s to fit and is
   cached to disk, keyed by a signature of the data and feature version. Without
   it every service start paid that cost; with it, startup is under 3 s. SARIMA
   keeps a separate per-part order cache, because its grid search is the
   expensive half and its answer barely moves week to week.
+
+Both are filled by the FastAPI `lifespan()` hook, which is where the expensive
+work is paid for once so that step 3 above touches no database at all:
+
+![Sequence diagram of the FastAPI startup sequence: lifespan() loads every catalog part from MongoDB into the PartMatcher in-memory index, then asks the disk cache for a forecaster matching the current data signature — a hit is ready in under three seconds, a miss samples price history from PostgreSQL and fits a gradient booster before saving it back — after which the service marks itself ready and /analyze stops returning 503](images/startup-sequence.png)
 
 ## Why two datastores
 
@@ -140,8 +153,19 @@ Windows.
 
 ## What is deliberately absent
 
-No authentication, no user accounts, no multi-tenancy, no message queue, no
-container orchestration. This is a single-user analysis tool run locally, and
-every one of those would be weight without a load. The two datastores are here
-because the data genuinely has two shapes; nothing else was added on the same
-reasoning.
+No multi-tenancy, no message queue, no container orchestration. This is a
+single-user analysis tool, and every one of those would be weight without a
+load. The two datastores are here because the data genuinely has two shapes;
+nothing else was added on the same reasoning.
+
+Authentication is the one thing the public deployment forced, and it was kept
+to the same standard. There is one account, `AUTH_USER` and `AUTH_PASSWORD` in
+`.env` — no user table, no signup, no reset, because there is nothing to
+enumerate. Proof of login is a signed token rather than a row in a session
+store: `base64url(claims).base64url(hmac)`, HMAC-SHA256 over the claims, which
+`node:crypto` and Express's own `res.cookie` cover between them with no new
+dependency and no third datastore. The trade is that a single token cannot be
+revoked on its own — changing `AUTH_USER` or restarting invalidates every
+outstanding one, which for a one-account tool is the only revocation anyone
+would ask for. Leaving both variables blank turns the gate off entirely, so a
+clean clone still runs with no configuration.
