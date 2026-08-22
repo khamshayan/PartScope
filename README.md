@@ -76,6 +76,8 @@ PartScope automates the first pass on all three.
 
 ## How it works
 
+- **Input** — paste an email, upload a spreadsheet, or type part numbers
+  directly. Columns and quantities are detected from content, not headers.
 - **Matching** — normalizes messy input against a real parts catalog and
   scores confidence.
 - **Pricing** — forecasts next-week price from historical broker quotes
@@ -84,8 +86,7 @@ PartScope automates the first pass on all three.
 - **Test-flow routing** — a transparent, rules-based score (lifecycle, stock,
   volatility, part grade, age, match confidence) recommends Standard,
   Enhanced, or Full AS6171 testing, with the reasons shown.
-- **Input** — paste an email, upload a spreadsheet, or type part numbers
-  directly. Columns and quantities are detected from content, not headers.
+
 
 ## Architecture
 
