@@ -89,17 +89,7 @@ PartScope automates the first pass on all three.
 
 
 ## Architecture
-
-```
-browser (React + Vite)
-    |
-Express API :3000 ── MongoDB   (parts catalog)
-    |
-FastAPI     :8000 ── PostgreSQL (price history, RFQs)
-```
-
-Two datastores because the data differs in shape: catalog specs vary by part
-category, while price history is uniform time series. Details in
+Detailed information in,
 [docs/architecture.md](docs/architecture.md).
 
 ## Deployment
